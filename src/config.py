@@ -71,7 +71,7 @@ class Settings:
             github_webhook_secret=_str("GITHUB_WEBHOOK_SECRET"),
             github_token=_str("GITHUB_TOKEN"),
             ollama_url=_str("OLLAMA_URL", "http://localhost:11434").rstrip("/"),
-            ollama_model=_str("OLLAMA_MODEL", "neural-chat"),
+            ollama_model=_str("OLLAMA_MODEL", "neural-chat:latest"),
             ollama_timeout_seconds=_int("OLLAMA_TIMEOUT_SECONDS", 8),
             queue_file_path=_path("QUEUE_FILE_PATH", "queue.json"),
             check_interval_seconds=_int("CHECK_INTERVAL_SECONDS", 3600),

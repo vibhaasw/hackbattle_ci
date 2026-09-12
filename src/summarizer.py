@@ -49,8 +49,12 @@ class Summarizer:
         parsed: dict[str, Any] | None = None
         try:
             parsed = self._call_ollama(notification)
-        except Exception:
-            logger.exception("Ollama summarization failed for %s", notification.id)
+        except Exception as exc:
+            logger.error(
+                "Ollama unavailable for %s (%s); using fallback formatter",
+                notification.id,
+                exc.__class__.__name__,
+            )
 
         summary = ""
         urgency = ""
