@@ -130,6 +130,19 @@ class ReleaseLogicTests(unittest.TestCase):
         )
         self.assertTrue(ungated.should_release(manual=True))
 
+    def test_broken_calendar_credentials_fail_open(self) -> None:
+        broken = self.dir / "broken-creds.json"
+        broken.write_text("{not-json", encoding="utf-8")
+        settings = _settings(self.dir)
+        settings = Settings(
+            **{**settings.__dict__, "google_calendar_credentials_file": broken}
+        )
+        self._seed()
+        logic = ReleaseLogic(self.queue, settings, focus_mode_override=False)
+        self.assertTrue(logic.should_release(manual=True))
+        self.assertIsNotNone(logic.gate_warning)
+        self.assertIn("failing open", logic.gate_warning or "")
+
     def test_persisted_focus_mode(self) -> None:
         self._seed()
         self.logic.set_focus_mode(True)

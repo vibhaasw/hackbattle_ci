@@ -21,9 +21,12 @@ class TUI:
         self,
         notifications: list[dict[str, Any]],
         stats: dict[str, Any] | None = None,
+        warning: str | None = None,
     ) -> None:
         """Print the focus-stat panel and the pending queue as a table."""
         self._print_header(stats)
+        if warning:
+            self.console.print(warning)
         if not notifications:
             self.console.print(theme.EMPTY_QUEUE_MESSAGE)
             return
@@ -46,9 +49,11 @@ class TUI:
 
         self.console.print(table)
 
-    def show_held(self, stats: dict[str, Any] | None = None) -> None:
+    def show_held(self, stats: dict[str, Any] | None = None, warning: str | None = None) -> None:
         """Tell the developer the queue exists but the meeting gate is holding it."""
         self._print_header(stats)
+        if warning:
+            self.console.print(warning)
         self.console.print(theme.HELD_MESSAGE)
 
     def _print_header(self, stats: dict[str, Any] | None) -> None:

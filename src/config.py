@@ -30,6 +30,16 @@ def _bool(name: str, default: bool) -> bool:
     return raw.strip().lower() in {"1", "true", "yes", "on"}
 
 
+def _optional_path(name: str) -> Path | None:
+    raw = _str(name)
+    if not raw or raw == "credentials.json":
+        return None
+    path = Path(raw)
+    if not path.is_absolute():
+        path = ROOT / path
+    return path
+
+
 def _path(name: str, default: str) -> Path:
     raw = _str(name, default)
     path = Path(raw)
@@ -61,6 +71,7 @@ class Settings:
     slack_bot_token: str = ""
     slack_app_token: str = ""
     focus_mode: bool = False
+    google_calendar_credentials_file: Path | None = None
 
     @classmethod
     def load(cls) -> Settings:
@@ -87,4 +98,5 @@ class Settings:
             slack_bot_token=_str("SLACK_BOT_TOKEN"),
             slack_app_token=_str("SLACK_APP_TOKEN"),
             focus_mode=_bool("FOCUS_MODE", False),
+            google_calendar_credentials_file=_optional_path("GOOGLE_CALENDAR_CREDENTIALS_FILE"),
         )

@@ -9,6 +9,7 @@ COLUMN_SUMMARY = "Summary"
 COLUMN_INDEX_STYLE = "bold"
 EMPTY_QUEUE_MESSAGE = "No pending notifications."
 HELD_MESSAGE = "Queue held — focus mode is on (simulated meeting)."
+CALENDAR_FAIL_OPEN_WARNING = "Calendar credentials unreadable — failing open (not in a meeting)."
 
 # Urgency row styles — edit here, not in tui.py
 URGENCY_STYLE = {
