@@ -28,5 +28,26 @@
         "user": {"login": "Alice"}
       }
     }
+  },
+  "slack_events": {
+    "dm": {
+      "type": "message",
+      "channel_type": "im",
+      "channel": "D012345",
+      "user": "U111",
+      "text": "Can you review the deploy?",
+      "ts": "1710000000.000100",
+      "team": "T123",
+      "client_msg_id": "11111111-aaaa-bbbb-cccc-222222222222"
+    },
+    "app_mention": {
+      "type": "app_mention",
+      "channel": "C456",
+      "user": "U222",
+      "text": "<@U999> prod is timing out @channel",
+      "ts": "1710000001.000200",
+      "team": "T123",
+      "client_msg_id": "33333333-aaaa-bbbb-cccc-444444444444"
+    }
   }
 }
