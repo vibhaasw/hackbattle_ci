@@ -1,4 +1,62 @@
 {
+  "notifications": [
+    {
+      "id": "github-issue-12",
+      "source": "github",
+      "type": "issue",
+      "author": "Bob",
+      "title": "Deploy failed in prod",
+      "summary": "[Issue] Bob: Deploy failed in prod (timeout)",
+      "urgency": "urgent",
+      "url": "https://github.com/myorg/auth-service/issues/12",
+      "timestamp": 1710000100,
+      "read": false,
+      "deferred": false,
+      "raw_data": {"id": 12}
+    },
+    {
+      "id": "slack-mention-T123-C456-1710000001",
+      "source": "slack",
+      "type": "mention",
+      "author": "Riley",
+      "title": "<@U999> prod is timing out @channel",
+      "summary": "[Mention] Riley: prod timeout @channel",
+      "urgency": "urgent",
+      "url": "https://myorg.slack.com/archives/C456/p1710000001",
+      "timestamp": 1710000001,
+      "read": false,
+      "deferred": false,
+      "raw_data": {"text": "<@U999> prod is timing out @channel"}
+    },
+    {
+      "id": "github-pull_request-456",
+      "source": "github",
+      "type": "pull_request",
+      "author": "Sarah",
+      "title": "Add OAuth2 support",
+      "summary": "[PR] Sarah: OAuth2 auth service (3 files, +120 -45)",
+      "urgency": "normal",
+      "url": "https://github.com/myorg/auth-service/pull/456",
+      "timestamp": 1710000000,
+      "read": false,
+      "deferred": false,
+      "raw_data": {"id": 456}
+    },
+    {
+      "id": "slack-dm-T123-D012345-1710000000",
+      "source": "slack",
+      "type": "dm",
+      "author": "Sam",
+      "title": "Can you review the deploy?",
+      "summary": "[DM] Sam: Can you review the deploy?",
+      "urgency": "normal",
+      "url": "https://myorg.slack.com/archives/D012345/p1710000000",
+      "timestamp": 1694000000,
+      "read": false,
+      "deferred": false,
+      "raw_data": {"text": "Can you review the deploy?"}
+    }
+  ],
   "github_webhooks": {
     "pull_request": {
       "action": "opened",
