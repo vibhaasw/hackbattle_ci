@@ -62,7 +62,10 @@ def create_app(
         try:
             payload = json.loads(raw.decode("utf-8") or "{}")
         except json.JSONDecodeError:
-            logger.exception("Rejected webhook: invalid JSON")
+            logger.error("Rejected webhook: malformed JSON payload")
+            return {"error": "invalid json"}, 400
+        if not isinstance(payload, dict):
+            logger.error("Rejected webhook: JSON payload must be an object")
             return {"error": "invalid json"}, 400
 
         if event_type not in _HANDLED_EVENTS:
