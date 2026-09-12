@@ -1,9 +1,10 @@
-"""Context Interrupter CLI: webhook daemon and manual queue release."""
+"""Context Interrupter CLI: capture listeners, release triggers, and TUI."""
 
 from __future__ import annotations
 
 import argparse
 import logging
+import socket
 import sys
 import threading
 import time
@@ -29,7 +30,17 @@ def build_parser() -> argparse.ArgumentParser:
     """CLI: `daemon` listens; `release` shows the TUI; `focus` toggles the meeting gate."""
     parser = argparse.ArgumentParser(description="Context Interrupter")
     sub = parser.add_subparsers(dest="command", required=True)
-    sub.add_parser("daemon", help="Run the GitHub webhook listener")
+    daemon = sub.add_parser(
+        "daemon",
+        help="Same as watch: GitHub + Slack listeners and commit/timer release",
+    )
+    daemon.add_argument(
+        "--interval-seconds",
+        type=int,
+        default=None,
+        metavar="N",
+        help="Override check_interval_seconds (default: queue setting, 3600)",
+    )
     release = sub.add_parser("release", help="Manually release the queue into the TUI")
     release.add_argument(
         "--focus-mode",
@@ -39,7 +50,10 @@ def build_parser() -> argparse.ArgumentParser:
     focus = sub.add_parser("focus", help="Persist the meeting / focus-mode gate")
     focus.add_argument("state", choices=("on", "off"))
     sub.add_parser("replay", help="Load canned demo/test_notifications.json into the queue")
-    watch = sub.add_parser("watch", help="Release on git commit or after check_interval_seconds")
+    watch = sub.add_parser(
+        "watch",
+        help="GitHub webhook + Slack Socket Mode + commit/timer release (demo entry point)",
+    )
     watch.add_argument(
         "--interval-seconds",
         type=int,
@@ -50,29 +64,67 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def run_daemon(settings: Settings, queue: NotificationQueue) -> None:
-    """Serve GitHub webhooks and, if configured, Slack Socket Mode."""
+def run_daemon(
+    settings: Settings,
+    queue: NotificationQueue,
+    *,
+    interval_seconds: int | None = None,
+) -> None:
+    """Alias for watch — same process runs capture listeners and release triggers."""
+    run_watch(settings, queue, interval_seconds=interval_seconds)
+
+
+def _start_capture_listeners(settings: Settings, queue: NotificationQueue) -> None:
+    """Start Slack Socket Mode and the GitHub Flask listener in background threads."""
     summarizer = Summarizer(settings)
     handler = start_slack_listener(queue, settings, summarizer.summarize)
     if handler is not None:
-        thread = threading.Thread(
+        threading.Thread(
             target=_run_slack,
             args=(handler,),
             name="slack-socket-mode",
             daemon=True,
-        )
-        thread.start()
+        ).start()
+        time.sleep(2.5)
     app = create_app(queue, settings.github_webhook_secret, summarizer.summarize)
     logger.info(
         "Listening for GitHub webhooks on http://%s:%s/github/webhook",
         settings.github_webhook_host,
         settings.github_webhook_port,
     )
-    app.run(
+    thread = threading.Thread(
+        target=_run_flask,
+        args=(app, settings),
+        name="github-webhook",
+        daemon=True,
+    )
+    thread.start()
+    _wait_for_port(settings.github_webhook_host, settings.github_webhook_port)
+
+
+def _run_flask(app: object, settings: Settings) -> None:
+    """Block this thread on the GitHub webhook server."""
+    app.run(  # type: ignore[attr-defined]
         host=settings.github_webhook_host,
         port=settings.github_webhook_port,
         use_reloader=False,
+        threaded=True,
     )
+
+
+def _wait_for_port(host: str, port: int, timeout: float = 5.0) -> None:
+    """Block until Flask is accepting connections (or the timeout expires)."""
+    probe_host = "127.0.0.1" if host in {"0.0.0.0", "::"} else host
+    deadline = time.time() + timeout
+    last_exc: OSError | None = None
+    while time.time() < deadline:
+        try:
+            with socket.create_connection((probe_host, port), timeout=0.3):
+                return
+        except OSError as exc:
+            last_exc = exc
+            time.sleep(0.1)
+    logger.warning("GitHub webhook port %s:%s not open yet (%s)", probe_host, port, last_exc)
 
 
 def _run_slack(handler: object) -> None:
@@ -131,7 +183,8 @@ def run_watch(
     *,
     interval_seconds: int | None = None,
 ) -> None:
-    """Poll git HEAD and the release timer; open the TUI when a trigger fires."""
+    """Capture listeners plus git/timer release, all in one process."""
+    _start_capture_listeners(settings, queue)
     logic = ReleaseLogic(
         queue, settings, git_root=ROOT, interval_seconds=interval_seconds
     )
@@ -172,7 +225,11 @@ def main() -> None:
     settings = Settings.load()
     queue = NotificationQueue(settings.queue_file_path, settings)
     if args.command == "daemon":
-        run_daemon(settings, queue)
+        run_daemon(
+            settings,
+            queue,
+            interval_seconds=getattr(args, "interval_seconds", None),
+        )
     elif args.command == "release":
         run_release(settings, queue, focus_mode=getattr(args, "focus_mode", None))
     elif args.command == "focus":

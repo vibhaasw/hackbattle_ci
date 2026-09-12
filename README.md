@@ -55,7 +55,7 @@ ollama pull neural-chat:latest
 ### GitHub webhook
 
 ```bash
-.venv/bin/python -m src.main daemon
+.venv/bin/python -m src.main watch
 # in another terminal:
 ngrok http 9001
 ```
@@ -65,7 +65,10 @@ Repo → Settings → Webhooks → Payload URL `https://<ngrok>/github/webhook`,
 ## Run
 
 ```bash
-# listener (GitHub webhook + Slack Socket Mode)
+# everything: GitHub webhook + Slack Socket Mode + commit/timer release
+.venv/bin/python -m src.main watch
+
+# same process (alias)
 .venv/bin/python -m src.main daemon
 
 # show the queue (manual release)

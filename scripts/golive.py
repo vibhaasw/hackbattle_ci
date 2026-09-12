@@ -354,7 +354,7 @@ class GoLive:
         log = DAEMON_LOG.open("a", encoding="utf-8")
         try:
             self.daemon_proc = subprocess.Popen(
-                [python_bin(), "-m", "src.main", "daemon"],
+                [python_bin(), "-m", "src.main", "watch"],
                 cwd=ROOT,
                 stdout=log,
                 stderr=subprocess.STDOUT,
@@ -559,7 +559,7 @@ class GoLive:
             Panel(
                 f"Recorded {len(before_ids)} notification id(s) from {path.name}.\n"
                 "Restart the daemon now (stop the old process, start "
-                "`python -m src.main daemon` again).\n"
+                "`python -m src.main watch` again).\n"
                 "Do not wipe queue.json.",
                 title="Restart persistence",
                 border_style="yellow",

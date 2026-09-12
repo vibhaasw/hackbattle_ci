@@ -8,7 +8,7 @@ Walk this before a demo. Prefer `python scripts/golive.py` over ticking boxes by
 - [ ] Start `ollama serve` if it is not already running
 - [ ] `.env` has real Slack tokens (`xoxb-` / `xapp-`, not placeholders)
 - [ ] Daemon webhook port (default `9001`) accepts a connection
-- [ ] Start the daemon in the background (`python -m src.main daemon`)
+- [ ] Start capture + release together (`python -m src.main watch`)
 
 ## Dual-Source Capture
 
