@@ -13,6 +13,8 @@ from src.notification import Notification
 
 logger = logging.getLogger(__name__)
 
+_URGENCY_RANK = {"urgent": 2, "normal": 1, "low": 0}
+
 
 class NotificationQueue:
     """Persist notifications to disk; dedup key is `{source}-{type}-{raw_id}`."""
@@ -49,13 +51,16 @@ class NotificationQueue:
         return stored
 
     def get_pending(self) -> list[Notification]:
-        """Unread, non-deferred notifications, newest first."""
+        """Unread, non-deferred notifications: urgency desc, then newest first."""
         pending = [
             n
             for n in self.notifications.values()
             if not n.read and not n.deferred
         ]
-        pending.sort(key=lambda n: n.timestamp, reverse=True)
+        pending.sort(
+            key=lambda n: (_URGENCY_RANK.get(n.urgency, 1), n.timestamp),
+            reverse=True,
+        )
         return pending
 
     def get_queue_snapshot(self) -> list[dict[str, Any]]:
