@@ -15,6 +15,7 @@ if str(ROOT) not in sys.path:
 from src.config import Settings
 from src.github_listener import create_app
 from src.queue import NotificationQueue
+from src.analytics import stats_snapshot
 from src.release_logic import ReleaseLogic
 from src.slack_listener import run_socket_mode, start_slack_listener
 from src.summarizer import Summarizer
@@ -84,11 +85,12 @@ def run_release(
     """Manual trigger: render whatever is currently pending, unless the gate holds."""
     override = None if focus_mode is None else focus_mode == "on"
     logic = ReleaseLogic(queue, settings, focus_mode_override=override)
+    stats = stats_snapshot(queue)
     tui = TUI()
     if logic.is_held():
-        tui.show_held()
+        tui.show_held(stats)
         return
-    tui.show_queue(logic.manual_release())
+    tui.show_queue(logic.manual_release(), stats_snapshot(queue))
 
 
 def run_focus(settings: Settings, queue: NotificationQueue, state: str) -> None:

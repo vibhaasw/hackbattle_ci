@@ -1,10 +1,11 @@
-"""Minimal Rich table renderer for queued notifications."""
+"""Rich table renderer for queued notifications. Styling lives in theme.py."""
 
 from __future__ import annotations
 
 from typing import Any
 
 from rich.console import Console
+from rich.panel import Panel
 from rich.table import Table
 
 from src import theme
@@ -16,8 +17,13 @@ class TUI:
     def __init__(self, console: Console | None = None) -> None:
         self.console = console or Console()
 
-    def show_queue(self, notifications: list[dict[str, Any]]) -> None:
-        """Print the pending queue as a table."""
+    def show_queue(
+        self,
+        notifications: list[dict[str, Any]],
+        stats: dict[str, Any] | None = None,
+    ) -> None:
+        """Print the focus-stat panel and the pending queue as a table."""
+        self._print_header(stats)
         if not notifications:
             self.console.print(theme.EMPTY_QUEUE_MESSAGE)
             return
@@ -40,6 +46,18 @@ class TUI:
 
         self.console.print(table)
 
-    def show_held(self) -> None:
+    def show_held(self, stats: dict[str, Any] | None = None) -> None:
         """Tell the developer the queue exists but the meeting gate is holding it."""
+        self._print_header(stats)
         self.console.print(theme.HELD_MESSAGE)
+
+    def _print_header(self, stats: dict[str, Any] | None) -> None:
+        minutes = 0.0
+        if stats:
+            minutes = float(stats.get("focus_minutes_protected_today") or 0)
+        self.console.print(
+            Panel(
+                theme.FOCUS_STAT_TEMPLATE.format(minutes=minutes),
+                title=theme.FOCUS_PANEL_TITLE,
+            )
+        )

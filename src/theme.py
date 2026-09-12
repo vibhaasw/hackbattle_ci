@@ -18,6 +18,10 @@ URGENCY_STYLE = {
 }
 
 
+FOCUS_PANEL_TITLE = "FOCUS"
+FOCUS_STAT_TEMPLATE = "🛡 {minutes:g} min protected today"
+
+
 def row_style(urgency: str | None) -> str:
     """Rich style name for a notification row, keyed by urgency."""
     key = (urgency or "normal").strip().lower()
