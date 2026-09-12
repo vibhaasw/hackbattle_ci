@@ -1,1 +1,32 @@
-[]
+{
+  "github_webhooks": {
+    "pull_request": {
+      "action": "opened",
+      "pull_request": {
+        "id": 456,
+        "title": "Add OAuth2 support",
+        "html_url": "https://github.com/myorg/auth-service/pull/456",
+        "user": {"login": "Sarah"}
+      }
+    },
+    "issues": {
+      "action": "opened",
+      "issue": {
+        "id": 789,
+        "title": "Deploy failed in prod",
+        "html_url": "https://github.com/myorg/auth-service/issues/12",
+        "user": {"login": "Bob"}
+      }
+    },
+    "issue_comment": {
+      "action": "created",
+      "issue": {"id": 12, "title": "Deploy failed in prod"},
+      "comment": {
+        "id": 999,
+        "body": "Can someone take a look?",
+        "html_url": "https://github.com/myorg/auth-service/issues/12#comment-999",
+        "user": {"login": "Alice"}
+      }
+    }
+  }
+}

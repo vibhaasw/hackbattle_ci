@@ -1,0 +1,10 @@
+"""Display strings and table labels. Safe for the design teammate to edit."""
+
+TABLE_TITLE = "CONTEXT QUEUE"
+TABLE_TITLE_WITH_COUNT = "CONTEXT QUEUE [{count} waiting]"
+COLUMN_INDEX = "#"
+COLUMN_TYPE = "Type"
+COLUMN_AUTHOR = "Author"
+COLUMN_SUMMARY = "Summary"
+COLUMN_INDEX_STYLE = "bold"
+EMPTY_QUEUE_MESSAGE = "No pending notifications."
