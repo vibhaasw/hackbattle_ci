@@ -12,7 +12,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from src.config import Settings
 from src.queue import NotificationQueue
-from src.slack_listener import ingest_slack_event, normalize_slack_event, slack_token_errors
+from src.slack_listener import (
+    ingest_slack_event,
+    normalize_slack_event,
+    should_drop_bot_event,
+    slack_token_errors,
+)
 
 DM_EVENT = {
     "type": "message",
@@ -99,12 +104,33 @@ class SlackListenerTests(unittest.TestCase):
         self.assertIsNone(ingest_slack_event(edited, notif_type="dm", queue=self.queue))
         self.assertEqual(self.queue.get_pending(), [])
 
-    def test_ingests_bot_authored_mention(self) -> None:
-        bot_mention = dict(MENTION_EVENT, bot_id="B01")
-        notif = ingest_slack_event(bot_mention, notif_type="mention", queue=self.queue)
+    def test_bot_mention_only_in_smoke_test_channel(self) -> None:
+        other = dict(MENTION_EVENT, bot_id="B01", channel="C-OTHER")
+        test = dict(
+            MENTION_EVENT,
+            bot_id="B01",
+            channel="C-TEST",
+            client_msg_id="smoke-bot-mention",
+        )
+        with patch.dict(os.environ, {"SLACK_TEST_CHANNEL_ID": "C-TEST"}):
+            self.assertTrue(
+                should_drop_bot_event(other, notif_type="mention", bot_user_id="U999")
+            )
+            self.assertFalse(
+                should_drop_bot_event(test, notif_type="mention", bot_user_id="U999")
+            )
+            self.assertIsNone(ingest_slack_event(other, notif_type="mention", queue=self.queue))
+            notif = ingest_slack_event(test, notif_type="mention", queue=self.queue)
         assert notif is not None
-        self.assertEqual(notif.type, "mention")
         self.assertEqual(len(self.queue.get_pending()), 1)
+        self.assertEqual(self.queue.get_pending()[0].id, "slack-mention-smoke-bot-mention")
+
+    def test_human_mention_not_dropped_outside_test_channel(self) -> None:
+        with patch.dict(os.environ, {"SLACK_TEST_CHANNEL_ID": "C-TEST"}):
+            self.assertFalse(should_drop_bot_event(MENTION_EVENT, notif_type="mention"))
+            notif = ingest_slack_event(MENTION_EVENT, notif_type="mention", queue=self.queue)
+        assert notif is not None
+        self.assertEqual(notif.raw_data.get("channel"), "C456")
 
     def test_summarize_callback(self) -> None:
         ingest_slack_event(

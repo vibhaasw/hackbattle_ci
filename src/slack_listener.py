@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 from threading import Event
 from typing import Any, Callable
 
@@ -44,6 +45,37 @@ def normalize_slack_event(
     )
 
 
+def smoke_test_channel_id() -> str:
+    """Channel where bot self-@mentions are allowed (smoke test only)."""
+    return os.getenv("SLACK_TEST_CHANNEL_ID", "").strip()
+
+
+def is_bot_authored(event: dict[str, Any], bot_user_id: str = "") -> bool:
+    """True when Slack marks the event as a bot, or the user is our bot."""
+    if event.get("bot_id"):
+        return True
+    user = str(event.get("user") or "")
+    return bool(bot_user_id and user == bot_user_id)
+
+
+def should_drop_bot_event(
+    event: dict[str, Any],
+    *,
+    notif_type: str,
+    bot_user_id: str = "",
+) -> bool:
+    """Drop bot-authored events except mentions in SLACK_TEST_CHANNEL_ID.
+
+    DMs always drop bot senders. Human events are never dropped here.
+    """
+    if not is_bot_authored(event, bot_user_id):
+        return False
+    if event.get("channel_type") == "im" or notif_type != "mention":
+        return True
+    test = smoke_test_channel_id()
+    return not test or str(event.get("channel") or "") != test
+
+
 def ingest_slack_event(
     event: dict[str, Any],
     *,
@@ -51,13 +83,12 @@ def ingest_slack_event(
     queue: NotificationQueue,
     summarize: SummarizeFn | None = None,
     client: Any | None = None,
+    bot_user_id: str = "",
 ) -> Notification | None:
     """Normalize, summarize, and enqueue a Slack event. Never raises to the caller."""
-    # Ignore bot DMs and message edits. Allow bot-authored app_mentions so a
-    # bot can @itself in a test channel and still hit the real event path.
     if event.get("subtype"):
         return None
-    if event.get("bot_id") and notif_type != "mention":
+    if should_drop_bot_event(event, notif_type=notif_type, bot_user_id=bot_user_id):
         return None
     try:
         author = _resolve_author(client, event.get("user") or "")
@@ -106,8 +137,9 @@ def start_slack_listener(
         return None
 
     logger.info("Slack tokens loaded from environment; starting Socket Mode")
-    # Default Bolt setting drops the bot's own posts, which hides self-@mentions
-    # used by the smoke test and any other bot-authored mention.
+    # Bolt's default ignore-self would hide smoke-test self-@mentions entirely.
+    # We disable it and re-apply the same ignore for every channel except
+    # SLACK_TEST_CHANNEL_ID (see should_drop_bot_event).
     app = App(token=settings.slack_bot_token, ignoring_self_events_enabled=False)
     bot_user_id = ""
     try:
@@ -119,24 +151,40 @@ def start_slack_listener(
     def on_message(event: dict[str, Any], client: Any) -> None:
         if event.get("channel_type") == "im":
             ingest_slack_event(
-                event, notif_type="dm", queue=queue, summarize=summarize, client=client
+                event,
+                notif_type="dm",
+                queue=queue,
+                summarize=summarize,
+                client=client,
+                bot_user_id=bot_user_id,
             )
             return
-        # Bot self-@mention does not emit app_mention; catch it on the message event.
+        # Bot self-@mention does not emit app_mention; only the smoke channel
+        # is allowed through should_drop_bot_event.
         text = event.get("text") or ""
         if (
-            event.get("bot_id")
+            is_bot_authored(event, bot_user_id)
             and bot_user_id
             and f"<@{bot_user_id}>" in text
         ):
             ingest_slack_event(
-                event, notif_type="mention", queue=queue, summarize=summarize, client=client
+                event,
+                notif_type="mention",
+                queue=queue,
+                summarize=summarize,
+                client=client,
+                bot_user_id=bot_user_id,
             )
 
     @app.event("app_mention")
     def on_mention(event: dict[str, Any], client: Any) -> None:
         ingest_slack_event(
-            event, notif_type="mention", queue=queue, summarize=summarize, client=client
+            event,
+            notif_type="mention",
+            queue=queue,
+            summarize=summarize,
+            client=client,
+            bot_user_id=bot_user_id,
         )
 
     return SocketModeHandler(app, settings.slack_app_token)
