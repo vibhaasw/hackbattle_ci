@@ -1,8 +1,7 @@
-"""Ollama summarizer with urgency scoring (TRD §3.3)."""
+"""Ollama writes a short summary only. Urgency is decided by src.urgency."""
 
 from __future__ import annotations
 
-import json
 import logging
 import re
 from typing import Any
@@ -11,6 +10,7 @@ import requests
 
 from src.config import Settings
 from src.notification import Notification
+from src.queue import NotificationQueue
 
 logger = logging.getLogger(__name__)
 
@@ -20,79 +20,56 @@ _TYPE_LABELS = {
     "mention": "Mention",
     "dm": "DM",
 }
-_VALID_URGENCY = {"urgent", "normal", "low"}
-_URGENT_KEYWORDS = (
-    "urgent",
-    "breaking",
-    "timeout",
-    "blocking",
-    "prod",
-    "@here",
-    "@channel",
-)
+_MAX_WORDS = 15
 
 
 class Summarizer:
-    """Produce a <=15-word summary and an urgency tag via one Ollama call."""
+    """Fill summary via Ollama (or the offline formatter). Never sets urgency."""
 
-    def __init__(self, settings: Settings) -> None:
+    def __init__(self, settings: Settings, queue: NotificationQueue | None = None) -> None:
         self.settings = settings
-        self._cache: dict[str, tuple[str, str]] = {}
+        self.queue = queue
+        self._cache: dict[str, str] = {}
 
     def summarize(self, notification: Notification) -> str:
-        """Set summary + urgency on the notification; return the summary text."""
+        """Set summary, then route + tag with offline workflow/urgency code."""
         cached = self._cache.get(notification.id)
         if cached:
-            notification.summary, notification.urgency = cached
-            return cached[0]
+            notification.summary = cached
+        else:
+            summary = ""
+            try:
+                summary = self._call_ollama(notification)
+            except Exception as exc:
+                logger.error(
+                    "Ollama unavailable for %s (%s); using fallback formatter",
+                    notification.id,
+                    exc.__class__.__name__,
+                )
+            if not summary:
+                summary = self.fallback_summary(notification)
+            notification.summary = _clip_words(summary)
+            self._cache[notification.id] = notification.summary
 
-        parsed: dict[str, Any] | None = None
-        try:
-            parsed = self._call_ollama(notification)
-        except Exception as exc:
-            logger.error(
-                "Ollama unavailable for %s (%s); using fallback formatter",
-                notification.id,
-                exc.__class__.__name__,
-            )
-
-        summary = ""
-        urgency = ""
-        if parsed:
-            summary = str(parsed.get("summary") or "").strip()
-            tag = str(parsed.get("urgency") or "").strip().lower()
-            if tag in _VALID_URGENCY:
-                urgency = tag
-
-        if not summary:
-            summary = self.fallback_summary(notification)
-        if not urgency:
-            urgency = self.fallback_urgency(notification)
-
-        notification.summary = summary
-        notification.urgency = urgency
-        self._cache[notification.id] = (summary, urgency)
-        return summary
+        self._apply_routing(notification)
+        return notification.summary or ""
 
     def fallback_summary(self, notification: Notification) -> str:
         """TRD §6 formatter used when the LLM is unavailable."""
         label = _TYPE_LABELS.get(notification.type, notification.type.upper() or "NOTE")
         return f"[{label}] {notification.author}: {notification.title}".strip()
 
-    def fallback_urgency(self, notification: Notification) -> str:
-        """Keyword heuristic when the LLM is down or returns bad JSON (TRD §3.3)."""
-        parts = [notification.title, notification.summary or ""]
-        if isinstance(notification.raw_data, dict):
-            parts.append(str(notification.raw_data.get("text") or ""))
-            parts.append(str(notification.raw_data.get("body") or ""))
-        blob = " ".join(parts).lower()
-        for keyword in _URGENT_KEYWORDS:
-            if keyword in blob:
-                return "urgent"
-        return "normal"
+    def _apply_routing(self, notification: Notification) -> None:
+        from src.workflows import apply, ensure_workflows
 
-    def _call_ollama(self, notification: Notification) -> dict[str, Any] | None:
-        body = notification.title
+        workflows = ensure_workflows(self.queue) if self.queue is not None else []
+        if not workflows:
+            from src.workflows import default_workflows
+
+            workflows = default_workflows()
+        apply(notification, workflows)
+
+    def _call_ollama(self, notification: Notification) -> str:
         raw_text = ""
         if isinstance(notification.raw_data, dict):
             raw_text = str(
@@ -101,11 +78,11 @@ class Summarizer:
                 or ""
             )
         prompt = (
-            "Summarize this notification in ≤15 words and classify urgency.\n"
-            'Return JSON: {"summary": "...", "urgency": "urgent|normal|low"}\n\n'
-            f"Notification: source={notification.source}, "
-            f"author={notification.author}, title={notification.title}, "
-            f"body={raw_text or body}\n"
+            "Write a ≤15 word summary of this developer notification. "
+            "Return only the summary sentence. No JSON, no urgency, no labels.\n\n"
+            f"source={notification.source} type={notification.type} "
+            f"author={notification.author} title={notification.title} "
+            f"body={raw_text or notification.title}\n"
         )
         response = requests.post(
             f"{self.settings.ollama_url}/api/generate",
@@ -122,25 +99,36 @@ class Summarizer:
                 response.status_code,
                 notification.id,
             )
-            return None
-        text = (response.json().get("response") or "").strip()
-        parsed = _extract_json(text)
-        if parsed is None:
-            logger.error("Ollama returned non-JSON for %s: %s", notification.id, text[:200])
-        return parsed
+            return ""
+        text = str((response.json() or {}).get("response") or "").strip()
+        return _summary_from_model_text(text)
 
 
-def _extract_json(text: str) -> dict[str, Any] | None:
-    """Parse a JSON object from model output, including fenced snippets."""
-    candidates = [text.strip()]
-    fenced = re.search(r"\{.*\}", text, flags=re.DOTALL)
-    if fenced:
-        candidates.append(fenced.group(0))
-    for candidate in candidates:
+def _summary_from_model_text(text: str) -> str:
+    """Accept plain text, or a leftover {summary} object. Ignore any urgency key."""
+    stripped = (text or "").strip()
+    if not stripped:
+        return ""
+    match = re.search(r"\{.*\}", stripped, flags=re.DOTALL)
+    if match:
         try:
-            data = json.loads(candidate)
+            import json
+
+            data: Any = json.loads(match.group(0))
+            if isinstance(data, dict) and data.get("summary"):
+                return str(data["summary"]).strip()
         except json.JSONDecodeError:
-            continue
-        if isinstance(data, dict):
-            return data
-    return None
+            quoted = re.search(r'"summary"\s*:\s*"([^"]+)"', match.group(0))
+            if quoted:
+                return quoted.group(1).strip()
+    line = stripped.splitlines()[0].strip().strip('"').strip("'")
+    if line.startswith("{") or line.lower().startswith("```"):
+        return ""
+    return line
+
+
+def _clip_words(text: str, limit: int = _MAX_WORDS) -> str:
+    words = [part for part in (text or "").split() if part]
+    if len(words) <= limit:
+        return " ".join(words)
+    return " ".join(words[:limit])

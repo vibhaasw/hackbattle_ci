@@ -354,6 +354,121 @@ def update_hook(
     )
 
 
+def ensure_github_webhook(
+    repo: str,
+    token: str,
+    public_url: str,
+    *,
+    secret: str = "",
+    update_existing: bool = True,
+    env_path: Path | None = None,
+) -> SetupResult:
+    """Create or update the repo webhook at public_url. Does not prompt."""
+    path = env_path or (ROOT / ".env")
+    existing = load_env_file(path)
+    owner, name = parse_repo(repo)
+    webhook_url = normalize_webhook_url(public_url)
+    secret_value, _generated = ensure_webhook_secret(secret or existing.get("GITHUB_WEBHOOK_SECRET", ""))
+    get_repo(owner, name, token)
+    hooks = list_hooks(owner, name, token)
+    found = find_hook_by_url(hooks, webhook_url)
+    if found is not None:
+        hook_id = int(found["id"])
+        if update_existing:
+            updated = update_hook(
+                owner, name, token, hook_id, webhook_url=webhook_url, secret=secret_value
+            )
+            hook_id = int(updated.get("id") or hook_id)
+            action = "updated"
+        else:
+            action = "reused"
+    else:
+        created = create_hook(owner, name, token, webhook_url=webhook_url, secret=secret_value)
+        hook_id = int(created["id"])
+        action = "created"
+    return SetupResult(
+        repo=f"{owner}/{name}",
+        webhook_id=hook_id,
+        webhook_url=webhook_url,
+        webhook_action=action,
+        slack_workspace="",
+        env_path=path,
+        start_watch=False,
+    )
+
+
+def configure_from_values(
+    *,
+    github_repo: str = "",
+    github_token: str = "",
+    slack_bot_token: str = "",
+    slack_app_token: str = "",
+    public_url: str | None = None,
+    env_path: Path | None = None,
+    update_existing: bool = True,
+) -> SetupResult:
+    """Validate user-supplied tokens, upsert the webhook, and write .env."""
+    path = env_path or (ROOT / ".env")
+    existing = load_env_file(path)
+    repo = (github_repo or existing.get("GITHUB_REPO") or existing.get("GITHUB_TEST_REPO") or "").strip()
+    token = (github_token or existing.get("GITHUB_TOKEN") or "").strip()
+    bot = (slack_bot_token or existing.get("SLACK_BOT_TOKEN") or "").strip()
+    app = (slack_app_token or existing.get("SLACK_APP_TOKEN") or "").strip()
+    tunnel = (public_url or detect_ngrok_https_url() or existing.get("GITHUB_WEBHOOK_URL") or "").strip()
+
+    workspace = ""
+    if bot:
+        workspace = str(validate_bot_token(bot).get("team") or "")
+    if app:
+        validate_app_token(app)
+
+    owner_repo = ""
+    if repo:
+        owner, name = parse_repo(repo)
+        owner_repo = f"{owner}/{name}"
+
+    result = SetupResult(
+        repo=owner_repo,
+        webhook_id=None,
+        webhook_url="",
+        webhook_action="skipped",
+        slack_workspace=workspace,
+        env_path=path,
+        start_watch=False,
+    )
+    if owner_repo and token and tunnel:
+        result = ensure_github_webhook(
+            owner_repo, token, tunnel, update_existing=update_existing, env_path=path
+        )
+        result.slack_workspace = workspace
+    elif owner_repo and token:
+        get_repo(*parse_repo(owner_repo), token)
+        result.webhook_action = "pending_ngrok"
+
+    updates: dict[str, str] = {}
+    if owner_repo:
+        updates["GITHUB_REPO"] = owner_repo
+    if token:
+        updates["GITHUB_TOKEN"] = token
+    if bot:
+        updates["SLACK_BOT_TOKEN"] = bot
+    if app:
+        updates["SLACK_APP_TOKEN"] = app
+    secret_value, _ = ensure_webhook_secret(existing.get("GITHUB_WEBHOOK_SECRET", ""))
+    updates["GITHUB_WEBHOOK_SECRET"] = secret_value
+    if result.webhook_url:
+        updates["GITHUB_WEBHOOK_URL"] = result.webhook_url
+    elif tunnel:
+        try:
+            updates["GITHUB_WEBHOOK_URL"] = normalize_webhook_url(tunnel)
+            result.webhook_url = updates["GITHUB_WEBHOOK_URL"]
+        except SetupError:
+            pass
+    if updates:
+        upsert_env(path, updates)
+    return result
+
+
 def run_setup(
     *,
     env_path: Path | None = None,

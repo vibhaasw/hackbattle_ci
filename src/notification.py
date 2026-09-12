@@ -24,6 +24,7 @@ class Notification:
         read: bool = False,
         deferred: bool = False,
         id: str | None = None,
+        workflow_id: str = "",
     ) -> None:
         data = raw_data or {}
         resolved_raw_id = raw_id if raw_id is not None else data.get("id")
@@ -45,6 +46,7 @@ class Notification:
         self.timestamp = time.time() if timestamp is None else float(timestamp)
         self.read = read
         self.deferred = deferred
+        self.workflow_id = workflow_id or ""
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize to the TRD §5 JSON shape."""
@@ -60,6 +62,7 @@ class Notification:
             "timestamp": self.timestamp,
             "read": self.read,
             "deferred": self.deferred,
+            "workflow_id": self.workflow_id,
             "raw_data": self.raw_data,
         }
 
@@ -79,6 +82,7 @@ class Notification:
             read=bool(data.get("read", False)),
             deferred=bool(data.get("deferred", False)),
             id=data.get("id"),
+            workflow_id=str(data.get("workflow_id") or ""),
         )
 
     def update(self, incoming: Notification) -> None:
@@ -93,5 +97,7 @@ class Notification:
             self.summary = incoming.summary
         if incoming.urgency:
             self.urgency = incoming.urgency
+        if incoming.workflow_id:
+            self.workflow_id = incoming.workflow_id
         self.read = False
         self.deferred = False

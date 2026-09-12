@@ -86,6 +86,18 @@ class NotificationQueue:
         logger.info("Deferred %s", notification_id)
         return True
 
+    def dismiss_all_pending(self) -> int:
+        """Mark every unread, non-deferred item read. Returns how many were cleared."""
+        cleared = 0
+        for notif in self.notifications.values():
+            if not notif.read and not notif.deferred:
+                notif.read = True
+                cleared += 1
+        if cleared:
+            self.save()
+            logger.info("Dismissed %s pending notification(s)", cleared)
+        return cleared
+
     def dismiss(self, notification_id: str) -> bool:
         """Mark a notification read so it leaves the pending list."""
         notif = self.notifications.get(notification_id)

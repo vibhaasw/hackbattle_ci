@@ -11,6 +11,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from src.setup_wizard import (
     SetupError,
+    configure_from_values,
     ensure_webhook_secret,
     find_hook_by_url,
     format_slack_api_error,
@@ -285,6 +286,32 @@ class WizardFlowTests(unittest.TestCase):
         found = find_hook_by_url(hooks, "https://abc.ngrok-free.dev")
         assert found is not None
         self.assertEqual(found["id"], 2)
+
+    def test_configure_from_values_writes_env_and_syncs_hook(self) -> None:
+        with (
+            patch("src.setup_wizard.validate_bot_token", return_value={"team": "WS"}),
+            patch("src.setup_wizard.validate_app_token", return_value={"ok": True}),
+            patch("src.setup_wizard.detect_ngrok_https_url", return_value="https://abc.ngrok-free.dev"),
+            patch("src.setup_wizard.get_repo", return_value={"full_name": "acme/demo"}),
+            patch("src.setup_wizard.list_hooks", return_value=[]),
+            patch(
+                "src.setup_wizard.create_hook",
+                return_value={"id": 42, "config": {"url": "https://abc.ngrok-free.dev/github/webhook"}},
+            ),
+        ):
+            result = configure_from_values(
+                github_repo="acme/demo",
+                github_token="tok",
+                slack_bot_token="xoxb-bot",
+                slack_app_token="xapp-app",
+                env_path=self.path,
+            )
+        self.assertEqual(result.webhook_id, 42)
+        self.assertEqual(result.webhook_action, "created")
+        self.assertEqual(result.slack_workspace, "WS")
+        env = load_env_file(self.path)
+        self.assertEqual(env["GITHUB_REPO"], "acme/demo")
+        self.assertEqual(env["OLLAMA_MODEL"], "keep-me")
 
     def test_mask_secret(self) -> None:
         self.assertIn("…", mask_secret("github_pat_abcdefghijklmnop"))

@@ -33,8 +33,10 @@ stats.json
 tests/.tmp/
 logs/
 
-# Node (if dashboard tooling appears later)
+# Node (dashboard)
 node_modules/
+web/node_modules/
+web/dist/
 
 # OS / editor
 .DS_Store

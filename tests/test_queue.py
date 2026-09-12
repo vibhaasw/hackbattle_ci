@@ -128,6 +128,14 @@ class QueueTests(unittest.TestCase):
         self.assertTrue(reloaded.notifications["github-pull_request-1"].deferred)
         self.assertTrue(reloaded.notifications["github-pull_request-2"].read)
 
+    def test_dismiss_all_pending_leaves_history(self) -> None:
+        self.queue.add(_notif(1, title="keep me around"))
+        self.queue.add(_notif(2, title="also pending"))
+        cleared = self.queue.dismiss_all_pending()
+        self.assertEqual(cleared, 2)
+        self.assertEqual(self.queue.get_pending(), [])
+        self.assertEqual(len(self.queue.notifications), 2)
+
     def test_reset_stats_zeros_counters_only(self) -> None:
         self.queue.add(_notif(1))
         self.queue.add(_notif(2))

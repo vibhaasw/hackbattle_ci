@@ -1,4 +1,4 @@
-"""Summarizer happy-path JSON parsing and Ollama-down fallback tests."""
+"""Summarizer: Ollama writes text only; urgency comes from Python."""
 
 from __future__ import annotations
 
@@ -44,21 +44,15 @@ class SummarizerTests(unittest.TestCase):
         self.summarizer = Summarizer(_settings())
         self.notif = _notif()
 
-    def test_happy_path_parses_json(self) -> None:
-        payload = json.dumps(
-            {
-                "summary": "[PR] Sarah: OAuth2 auth service (3 files)",
-                "urgency": "normal",
-            }
-        )
-        fake = _FakeResponse(200, payload)
+    def test_happy_path_uses_plain_summary_not_model_urgency(self) -> None:
+        fake = _FakeResponse(200, "Sarah opened an OAuth2 pull request.")
         with patch("src.summarizer.requests.post", return_value=fake) as mocked:
             summary = self.summarizer.summarize(self.notif)
-        self.assertEqual(summary, "[PR] Sarah: OAuth2 auth service (3 files)")
+        self.assertEqual(summary, "Sarah opened an OAuth2 pull request.")
         self.assertEqual(self.notif.urgency, "normal")
         mocked.assert_called_once()
 
-    def test_parses_fenced_json_and_urgent_tag(self) -> None:
+    def test_ignores_urgency_key_in_leftover_json(self) -> None:
         fake = _FakeResponse(
             200,
             'Sure.\n```json\n{"summary": "[Issue] Bob: deploy down", "urgency": "URGENT"}\n```',
@@ -66,7 +60,7 @@ class SummarizerTests(unittest.TestCase):
         with patch("src.summarizer.requests.post", return_value=fake):
             self.summarizer.summarize(self.notif)
         self.assertEqual(self.notif.summary, "[Issue] Bob: deploy down")
-        self.assertEqual(self.notif.urgency, "urgent")
+        self.assertEqual(self.notif.urgency, "normal")
 
     def test_fallback_when_ollama_down(self) -> None:
         with patch("src.summarizer.requests.post", side_effect=ConnectionError("down")):
@@ -75,20 +69,21 @@ class SummarizerTests(unittest.TestCase):
         self.assertEqual(self.notif.urgency, "normal")
 
     def test_malformed_json_uses_fallback_summary(self) -> None:
-        fake = _FakeResponse(200, "this is not json at all")
+        fake = _FakeResponse(200, "{not-json")
         with patch("src.summarizer.requests.post", return_value=fake):
             summary = self.summarizer.summarize(self.notif)
         self.assertEqual(summary, "[PR] Sarah: Add OAuth2 support")
         self.assertEqual(self.notif.urgency, "normal")
 
-    def test_keyword_fallback_marks_urgent(self) -> None:
+    def test_code_marks_prod_urgent_even_if_model_says_low(self) -> None:
         self.notif.title = "Deploy failed in prod (timeout)"
-        with patch("src.summarizer.requests.post", side_effect=ConnectionError("down")):
+        fake = _FakeResponse(200, json.dumps({"summary": "Deploy failed", "urgency": "low"}))
+        with patch("src.summarizer.requests.post", return_value=fake):
             self.summarizer.summarize(self.notif)
         self.assertEqual(self.notif.urgency, "urgent")
-        self.assertIn("Deploy failed in prod", self.notif.summary)
+        self.assertEqual(self.notif.summary, "Deploy failed")
 
-    def test_keyword_fallback_from_slack_channel_ping(self) -> None:
+    def test_keyword_from_slack_channel_ping(self) -> None:
         slack = Notification(
             source="slack",
             type="mention",
@@ -98,19 +93,17 @@ class SummarizerTests(unittest.TestCase):
             raw_id="1",
             raw_data={"text": "<@U999> build is blocking @channel"},
         )
-        fake = _FakeResponse(200, "not-json")
-        with patch("src.summarizer.requests.post", return_value=fake):
+        with patch("src.summarizer.requests.post", side_effect=ConnectionError("down")):
             self.summarizer.summarize(slack)
         self.assertEqual(slack.urgency, "urgent")
 
-    def test_caches_by_notification_id(self) -> None:
-        payload = json.dumps({"summary": "[PR] Sarah: cached", "urgency": "low"})
-        fake = _FakeResponse(200, payload)
+    def test_caches_summary_only(self) -> None:
+        fake = _FakeResponse(200, "Sarah opened an OAuth2 pull request.")
         with patch("src.summarizer.requests.post", return_value=fake) as mocked:
             first = self.summarizer.summarize(self.notif)
             second = self.summarizer.summarize(self.notif)
         self.assertEqual(first, second)
-        self.assertEqual(self.notif.urgency, "low")
+        self.assertEqual(self.notif.urgency, "normal")
         mocked.assert_called_once()
 
 

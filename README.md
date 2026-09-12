@@ -21,7 +21,30 @@ python -m venv .venv
 cp .env.example .env
 ```
 
-Start ngrok against the webhook port, then run the setup wizard (writes tokens and creates the GitHub webhook for you):
+One command starts ngrok (or reuses a running tunnel), points the GitHub webhook at the live public URL, and serves the dashboard + capture listeners:
+
+```bash
+.venv/bin/python -m src.main start
+```
+
+Open `http://127.0.0.1:9001/` and paste your GitHub PAT + Slack tokens in **Connect**. The backend writes `.env` and updates the webhook — you do not copy-paste the ngrok URL.
+
+### Live judge path (real events only)
+
+```bash
+# 1) empty leftover test rows + zero today's stats
+.venv/bin/python -m src.main prime
+
+# 2) listeners + dashboard (skip if start is already running)
+.venv/bin/python -m src.main start
+
+# 3) open one real GitHub issue (closes it after the queue catches it)
+.venv/bin/python scripts/live_demo.py
+```
+
+Then hard-refresh **http://127.0.0.1:9001/**. The github pane should show that issue. In Slack, `@mention` the bot — the slack pane updates from Socket Mode, not from canned data.
+
+Or run the terminal setup wizard:
 
 ```bash
 ngrok http 9001

@@ -14,6 +14,7 @@ ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from src.api import attach_runtime_routes
 from src.config import Settings
 from src.github_listener import create_app
 from src.queue import NotificationQueue
@@ -69,6 +70,14 @@ def build_parser() -> argparse.ArgumentParser:
         "setup",
         help="Interactive wizard: create the GitHub webhook and write Slack tokens into .env",
     )
+    sub.add_parser(
+        "start",
+        help="One command: ngrok + webhook sync + listeners + dashboard API",
+    )
+    sub.add_parser(
+        "prime",
+        help="Empty the pending queue and zero today's stats for a live judge demo",
+    )
     return parser
 
 
@@ -84,7 +93,7 @@ def run_daemon(
 
 def _start_capture_listeners(settings: Settings, queue: NotificationQueue) -> None:
     """Start Slack Socket Mode and the GitHub Flask listener in background threads."""
-    summarizer = Summarizer(settings)
+    summarizer = Summarizer(settings, queue)
     handler = start_slack_listener(queue, settings, summarizer.summarize)
     if handler is not None:
         threading.Thread(
@@ -95,9 +104,14 @@ def _start_capture_listeners(settings: Settings, queue: NotificationQueue) -> No
         ).start()
         time.sleep(2.5)
     app = create_app(queue, settings.github_webhook_secret, summarizer.summarize)
+    attach_runtime_routes(app, queue, settings)
     logger.info(
         "Listening for GitHub webhooks on http://%s:%s/github/webhook",
         settings.github_webhook_host,
+        settings.github_webhook_port,
+    )
+    logger.info(
+        "Dashboard + API on http://127.0.0.1:%s/",
         settings.github_webhook_port,
     )
     thread = threading.Thread(
@@ -238,6 +252,30 @@ def run_setup_command() -> None:
     run_watch(settings, queue)
 
 
+def run_prime(queue: NotificationQueue) -> None:
+    """Clear leftover test items and zero counters so the dashboard starts empty."""
+    queue.load()
+    pending_before = [n.id for n in queue.get_pending()]
+    cleared = queue.dismiss_all_pending()
+    previous = reset_stats(queue)
+    print(f"Primed {queue.file_path} for a live demo")
+    print(f"  dismissed {cleared} pending item(s)")
+    if pending_before:
+        print("  was: " + ", ".join(pending_before))
+    print(
+        f"  interruptions_caught_today: {previous['interruptions_caught_today']} → 0"
+    )
+    print(f"  releases_today: {previous['releases_today']} → 0")
+    print(
+        f"  focus_minutes_protected_today: "
+        f"{previous['focus_minutes_protected_today']} → 0"
+    )
+    print("Dashboard panes stay empty until a real GitHub or Slack event arrives.")
+    print("Next: keep `python -m src.main start` running, then:")
+    print("  .venv/bin/python scripts/live_demo.py")
+    print("  or @mention the Slack bot / open a GitHub issue on the connected repo.")
+
+
 def run_reset_stats(queue: NotificationQueue) -> None:
     """Zero daily counters and print the previous values for a sanity check."""
     previous = reset_stats(queue)
@@ -288,6 +326,12 @@ def main() -> None:
         )
     elif args.command == "reset-stats":
         run_reset_stats(queue)
+    elif args.command == "start":
+        from src.launcher import run_start
+
+        run_start(settings, queue)
+    elif args.command == "prime":
+        run_prime(queue)
 
 
 if __name__ == "__main__":
