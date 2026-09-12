@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 import logging
+import time
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -23,13 +25,18 @@ class ReleaseLogic:
         *,
         focus_mode_override: bool | None = None,
         git_root: Path | None = None,
+        interval_seconds: int | None = None,
+        now: Callable[[], float] | None = None,
     ) -> None:
         self.queue = queue
         self.settings = settings
         self.focus_mode_override = focus_mode_override
         self.gate_warning: str | None = None
         self.git_root = Path(git_root) if git_root is not None else ROOT
+        self.interval_seconds_override = interval_seconds
+        self._now = now or time.time
         self._last_git_fingerprint: str | None = None
+        self._timer_started: float | None = None
 
     def should_release(self, *, manual: bool = False) -> bool:
         """True when there is something to show, the gate is clear, and a trigger fires."""
@@ -60,25 +67,27 @@ class ReleaseLogic:
             logger.info("Manual release requested but nothing to show")
             return []
         snapshot = self.queue.get_queue_snapshot()
-        from src.analytics import on_release
-
-        on_release(self.queue)
-        logger.info("Manual release of %s notification(s)", len(snapshot))
+        self._record_release(len(snapshot), kind="Manual")
         return snapshot
 
     def auto_release(self) -> list[dict[str, Any]]:
-        """Release when a non-manual trigger fires (git commit, etc.)."""
+        """Release when a non-manual trigger fires (git commit, timer, etc.)."""
         if self.is_held():
             logger.info("Auto release held: focus mode is on (simulated meeting)")
             return []
         if not self.should_release(manual=False):
             return []
         snapshot = self.queue.get_queue_snapshot()
+        self._record_release(len(snapshot), kind="Auto")
+        return snapshot
+
+    def _record_release(self, count: int, *, kind: str) -> None:
+        """Stamp last_release_at, bump analytics, and persist. Shared by every trigger."""
         from src.analytics import on_release
 
+        self.queue.stats["last_release_at"] = self._now()
         on_release(self.queue)
-        logger.info("Auto release of %s notification(s)", len(snapshot))
-        return snapshot
+        logger.info("%s release of %s notification(s)", kind, count)
 
     def set_focus_mode(self, enabled: bool) -> None:
         """Persist the focus-mode toggle into queue settings."""
@@ -158,6 +167,39 @@ class ReleaseLogic:
         """Stub — build-success watch is not required for the Phase 3 checkpoint."""
         return False
 
+    def _interval_seconds(self) -> int:
+        """Queue-state interval (default 3600), or the watch --interval-seconds override."""
+        if self.interval_seconds_override is not None:
+            return int(self.interval_seconds_override)
+        stored = self.queue.queue_settings.get("check_interval_seconds")
+        if stored is not None:
+            return int(stored)
+        return int(self.settings.check_interval_seconds)
+
+    def _last_release_at(self) -> float | None:
+        raw = self.queue.stats.get("last_release_at")
+        if raw is None:
+            return None
+        try:
+            return float(raw)
+        except (TypeError, ValueError):
+            return None
+
     def _timer_elapsed(self) -> bool:
-        """Stub — interval timer is not required for the Phase 3 checkpoint."""
-        return False
+        """True once check_interval_seconds has passed since the last release (or watch start)."""
+        interval = self._interval_seconds()
+        if interval <= 0:
+            return False
+        now = self._now()
+        last = self._last_release_at()
+        if last is None:
+            if self._timer_started is None:
+                self._timer_started = now
+                logger.info("Timer baseline; next release in %ss", interval)
+                return False
+            last = self._timer_started
+        elapsed = now - last
+        if elapsed < interval:
+            return False
+        logger.info("Timer elapsed (%.1fs >= %ss)", elapsed, interval)
+        return True

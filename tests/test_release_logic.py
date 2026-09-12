@@ -16,6 +16,17 @@ from src.queue import NotificationQueue
 from src.release_logic import ReleaseLogic
 
 
+class _FakeClock:
+    def __init__(self, start: float) -> None:
+        self.t = start
+
+    def __call__(self) -> float:
+        return self.t
+
+    def advance(self, seconds: float) -> None:
+        self.t += seconds
+
+
 def _settings(tmp: Path, **overrides: object) -> Settings:
     base = Settings.load()
     values = {
@@ -116,9 +127,71 @@ class ReleaseLogicTests(unittest.TestCase):
         self._seed()
         self.assertFalse(self.logic._build_success_detected())
 
-    def test_timer_trigger_stubbed(self) -> None:
+    def test_timer_fires_after_interval(self) -> None:
+        clock = _FakeClock(1_000.0)
+        settings = _settings(self.dir, git_commit_trigger=False, check_interval_seconds=10)
+        queue = NotificationQueue(settings.queue_file_path, settings)
+        queue.add(
+            Notification(
+                source="github",
+                type="issue",
+                author="Bob",
+                title="Deploy failed in prod",
+                url="https://example.com/issues/1",
+                raw_id=1,
+                summary="[Issue] Bob: Deploy failed in prod",
+            )
+        )
+        logic = ReleaseLogic(queue, settings, now=clock, interval_seconds=10)
+        self.assertEqual(logic.auto_release(), [])
+        clock.advance(9)
+        self.assertEqual(logic.auto_release(), [])
+        clock.advance(2)
+        snap = logic.auto_release()
+        self.assertEqual(len(snap), 1)
+        self.assertEqual(snap[0]["id"], "github-issue-1")
+        self.assertEqual(queue.stats["releases_today"], 1)
+        self.assertEqual(queue.stats["last_release_at"], clock.t)
+
+    def test_timer_respects_focus_mode(self) -> None:
+        clock = _FakeClock(1_000.0)
+        settings = _settings(self.dir, git_commit_trigger=False)
         self._seed()
-        self.assertFalse(self.logic._timer_elapsed())
+        logic = ReleaseLogic(
+            self.queue,
+            settings,
+            focus_mode_override=True,
+            now=clock,
+            interval_seconds=10,
+        )
+        self.assertEqual(logic.auto_release(), [])
+        clock.advance(30)
+        self.assertTrue(logic.is_held())
+        self.assertEqual(logic.auto_release(), [])
+        self.assertEqual(self.queue.stats.get("releases_today"), 0)
+
+    def test_any_release_resets_timer(self) -> None:
+        clock = _FakeClock(1_000.0)
+        settings = _settings(self.dir, git_commit_trigger=False)
+        self._seed()
+        logic = ReleaseLogic(self.queue, settings, now=clock, interval_seconds=10)
+        self.assertEqual(logic.auto_release(), [])
+        clock.advance(5)
+        self.assertEqual(len(logic.manual_release()), 1)
+        clock.advance(5)
+        self.assertEqual(logic.auto_release(), [])
+        clock.advance(6)
+        self.assertEqual(len(logic.auto_release()), 1)
+
+    def test_interval_reads_queue_settings(self) -> None:
+        clock = _FakeClock(1_000.0)
+        settings = _settings(self.dir, git_commit_trigger=False, check_interval_seconds=3600)
+        self._seed()
+        self.queue.queue_settings["check_interval_seconds"] = 8
+        logic = ReleaseLogic(self.queue, settings, now=clock)
+        self.assertEqual(logic.auto_release(), [])
+        clock.advance(8)
+        self.assertEqual(len(logic.auto_release()), 1)
 
     def test_manual_disabled(self) -> None:
         self._seed()

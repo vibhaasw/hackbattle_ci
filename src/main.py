@@ -39,7 +39,14 @@ def build_parser() -> argparse.ArgumentParser:
     focus = sub.add_parser("focus", help="Persist the meeting / focus-mode gate")
     focus.add_argument("state", choices=("on", "off"))
     sub.add_parser("replay", help="Load canned demo/test_notifications.json into the queue")
-    sub.add_parser("watch", help="Watch .git/HEAD and release the queue after a commit")
+    watch = sub.add_parser("watch", help="Release on git commit or after check_interval_seconds")
+    watch.add_argument(
+        "--interval-seconds",
+        type=int,
+        default=None,
+        metavar="N",
+        help="Override check_interval_seconds for this watch (default: queue setting, 3600)",
+    )
     return parser
 
 
@@ -118,13 +125,26 @@ def run_replay(queue: NotificationQueue) -> None:
     logger.info("Replayed %s canned notification(s) from %s", loaded, path)
 
 
-def run_watch(settings: Settings, queue: NotificationQueue) -> None:
-    """Poll .git/HEAD and open the TUI when a new commit is detected."""
-    logic = ReleaseLogic(queue, settings, git_root=ROOT)
+def run_watch(
+    settings: Settings,
+    queue: NotificationQueue,
+    *,
+    interval_seconds: int | None = None,
+) -> None:
+    """Poll git HEAD and the release timer; open the TUI when a trigger fires."""
+    logic = ReleaseLogic(
+        queue, settings, git_root=ROOT, interval_seconds=interval_seconds
+    )
     logic._git_commit_detected()
-    logger.info("Watching %s for commits (Ctrl+C to stop)", ROOT / ".git" / "HEAD")
+    interval = logic._interval_seconds()
+    logger.info(
+        "Watching %s for commits and a %ss timer (Ctrl+C to stop)",
+        ROOT / ".git" / "HEAD",
+        interval,
+    )
     try:
         while True:
+            queue.load()
             items = logic.auto_release()
             if items:
                 TUI().run_session(
@@ -160,7 +180,11 @@ def main() -> None:
     elif args.command == "replay":
         run_replay(queue)
     elif args.command == "watch":
-        run_watch(settings, queue)
+        run_watch(
+            settings,
+            queue,
+            interval_seconds=getattr(args, "interval_seconds", None),
+        )
 
 
 if __name__ == "__main__":
