@@ -65,6 +65,10 @@ def build_parser() -> argparse.ArgumentParser:
         "reset-stats",
         help="Zero today's demo counters in queue.json (notifications stay queued)",
     )
+    sub.add_parser(
+        "setup",
+        help="Interactive wizard: create the GitHub webhook and write Slack tokens into .env",
+    )
     return parser
 
 
@@ -219,6 +223,21 @@ def run_focus(settings: Settings, queue: NotificationQueue, state: str) -> None:
     ReleaseLogic(queue, settings).set_focus_mode(state == "on")
 
 
+def run_setup_command() -> None:
+    """Onboard GitHub + Slack, write .env, optionally start watch."""
+    from dotenv import load_dotenv
+
+    from src.setup_wizard import run_setup
+
+    result = run_setup(env_path=ROOT / ".env")
+    if not result.start_watch:
+        return
+    load_dotenv(ROOT / ".env", override=True)
+    settings = Settings.load()
+    queue = NotificationQueue(settings.queue_file_path, settings)
+    run_watch(settings, queue)
+
+
 def run_reset_stats(queue: NotificationQueue) -> None:
     """Zero daily counters and print the previous values for a sanity check."""
     previous = reset_stats(queue)
@@ -244,6 +263,9 @@ def main() -> None:
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
     args = build_parser().parse_args()
+    if args.command == "setup":
+        run_setup_command()
+        return
     settings = Settings.load()
     queue = NotificationQueue(settings.queue_file_path, settings)
     if args.command == "daemon":

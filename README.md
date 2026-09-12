@@ -21,7 +21,14 @@ python -m venv .venv
 cp .env.example .env
 ```
 
-Edit `.env`:
+Start ngrok against the webhook port, then run the setup wizard (writes tokens and creates the GitHub webhook for you):
+
+```bash
+ngrok http 9001
+.venv/bin/python -m src.main setup
+```
+
+Or edit `.env` by hand:
 
 ```bash
 # required for Slack
@@ -53,6 +60,8 @@ ollama pull neural-chat:latest
 6. Install the app, copy the `xoxb-` bot token, invite the bot to a channel (`/invite @YourBot`).
 
 ### GitHub webhook
+
+`python -m src.main setup` creates the hook via the GitHub API (needs a PAT with `admin:repo_hooks`). Manual fallback:
 
 ```bash
 .venv/bin/python -m src.main watch
