@@ -181,8 +181,8 @@ Existing triggers (git commit via `.git/HEAD` mtime, build success via marker fi
 | Failure | Symptom | Mitigation |
 |---|---|---|
 | Ollama crashes/unavailable | Summaries/urgency fail | Fallback formatter `[TYPE] AUTHOR: TITLE` + keyword-based urgency |
-| GitHub webhook timeout | Missing notifications | Polling backup |
-| Slack Socket Mode disconnect | Missing Slack notifications | Auto-reconnect with backoff; replay via Slack conversations API on reconnect |
+| GitHub webhook timeout | Missing notifications | `python -m src.main replay` against canned `demo/test_notifications.json`. Live GitHub API polling was never built and is not planned. |
+| Slack Socket Mode disconnect | Missing Slack notifications | Bolt reconnects automatically. Messages sent during the disconnect window are not replayed — known limitation, not a bug. |
 | Calendar API auth failure | Release gate can't evaluate | Default to "not in meeting" (fail-open) so tool never silently stops working, with a visible warning in TUI |
 | Queue corruption | JSON parse error | Backup queue.json, auto-repair on load |
 | TUI crash | Can't view queue | State remains in JSON, viewable manually |
