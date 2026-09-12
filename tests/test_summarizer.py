@@ -81,6 +81,28 @@ class SummarizerTests(unittest.TestCase):
         self.assertEqual(summary, "[PR] Sarah: Add OAuth2 support")
         self.assertEqual(self.notif.urgency, "normal")
 
+    def test_keyword_fallback_marks_urgent(self) -> None:
+        self.notif.title = "Deploy failed in prod (timeout)"
+        with patch("src.summarizer.requests.post", side_effect=ConnectionError("down")):
+            self.summarizer.summarize(self.notif)
+        self.assertEqual(self.notif.urgency, "urgent")
+        self.assertIn("Deploy failed in prod", self.notif.summary)
+
+    def test_keyword_fallback_from_slack_channel_ping(self) -> None:
+        slack = Notification(
+            source="slack",
+            type="mention",
+            author="Riley",
+            title="please look",
+            url="",
+            raw_id="1",
+            raw_data={"text": "<@U999> build is blocking @channel"},
+        )
+        fake = _FakeResponse(200, "not-json")
+        with patch("src.summarizer.requests.post", return_value=fake):
+            self.summarizer.summarize(slack)
+        self.assertEqual(slack.urgency, "urgent")
+
     def test_caches_by_notification_id(self) -> None:
         payload = json.dumps({"summary": "[PR] Sarah: cached", "urgency": "low"})
         fake = _FakeResponse(200, payload)

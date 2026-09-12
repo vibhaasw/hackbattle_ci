@@ -21,6 +21,15 @@ _TYPE_LABELS = {
     "dm": "DM",
 }
 _VALID_URGENCY = {"urgent", "normal", "low"}
+_URGENT_KEYWORDS = (
+    "urgent",
+    "breaking",
+    "timeout",
+    "blocking",
+    "prod",
+    "@here",
+    "@channel",
+)
 
 
 class Summarizer:
@@ -44,7 +53,7 @@ class Summarizer:
             logger.exception("Ollama summarization failed for %s", notification.id)
 
         summary = ""
-        urgency = notification.urgency or "normal"
+        urgency = ""
         if parsed:
             summary = str(parsed.get("summary") or "").strip()
             tag = str(parsed.get("urgency") or "").strip().lower()
@@ -53,6 +62,8 @@ class Summarizer:
 
         if not summary:
             summary = self.fallback_summary(notification)
+        if not urgency:
+            urgency = self.fallback_urgency(notification)
 
         notification.summary = summary
         notification.urgency = urgency
@@ -63,6 +74,18 @@ class Summarizer:
         """TRD §6 formatter used when the LLM is unavailable."""
         label = _TYPE_LABELS.get(notification.type, notification.type.upper() or "NOTE")
         return f"[{label}] {notification.author}: {notification.title}".strip()
+
+    def fallback_urgency(self, notification: Notification) -> str:
+        """Keyword heuristic when the LLM is down or returns bad JSON (TRD §3.3)."""
+        parts = [notification.title, notification.summary or ""]
+        if isinstance(notification.raw_data, dict):
+            parts.append(str(notification.raw_data.get("text") or ""))
+            parts.append(str(notification.raw_data.get("body") or ""))
+        blob = " ".join(parts).lower()
+        for keyword in _URGENT_KEYWORDS:
+            if keyword in blob:
+                return "urgent"
+        return "normal"
 
     def _call_ollama(self, notification: Notification) -> dict[str, Any] | None:
         body = notification.title
