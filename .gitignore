@@ -27,7 +27,10 @@ env/
 *.sqlite
 *.sqlite3
 queue.json
+queue.json.bak
+queue.json.tmp
 stats.json
+tests/.tmp/
 
 # Node (if dashboard tooling appears later)
 node_modules/
