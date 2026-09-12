@@ -89,6 +89,14 @@ class QueueTests(unittest.TestCase):
         self.assertEqual(len(reloaded.notifications), 1)
         self.assertEqual(reloaded.get_pending()[0].summary, "[PR] Sarah: OAuth2")
 
+    def test_sorts_by_urgency_then_timestamp(self) -> None:
+        self.queue.add(_notif(1, title="old normal", urgency="normal", timestamp=100.0))
+        self.queue.add(_notif(2, title="new low", urgency="low", timestamp=300.0))
+        self.queue.add(_notif(3, title="old urgent", urgency="urgent", timestamp=50.0))
+        self.queue.add(_notif(4, title="new urgent", urgency="urgent", timestamp=200.0))
+        titles = [n.title for n in self.queue.get_pending()]
+        self.assertEqual(titles, ["new urgent", "old urgent", "old normal", "new low"])
+
     def test_repairs_corrupt_file(self) -> None:
         self.settings.queue_file_path.write_text("{not-json", encoding="utf-8")
         repaired = NotificationQueue(self.settings.queue_file_path, self.settings)
