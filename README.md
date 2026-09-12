@@ -135,3 +135,10 @@ Interactive go-live checklist (dev/ops only — not part of the product):
 ```
 
 Automated checks only: `.venv/bin/python scripts/golive.py --auto`. See `GO_LIVE_CHECKLIST.md`.
+
+Repeatable capture smoke test (live Slack mention + synthetic GitHub webhook):
+
+```bash
+.venv/bin/python scripts/smoke_test.py
+.venv/bin/python scripts/smoke_test.py --github-mode live
+```

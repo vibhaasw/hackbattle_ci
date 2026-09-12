@@ -53,7 +53,11 @@ def ingest_slack_event(
     client: Any | None = None,
 ) -> Notification | None:
     """Normalize, summarize, and enqueue a Slack event. Never raises to the caller."""
-    if event.get("bot_id") or event.get("subtype"):
+    # Ignore bot DMs and message edits. Allow bot-authored app_mentions so a
+    # bot can @itself in a test channel and still hit the real event path.
+    if event.get("subtype"):
+        return None
+    if event.get("bot_id") and notif_type != "mention":
         return None
     try:
         author = _resolve_author(client, event.get("user") or "")
@@ -102,15 +106,32 @@ def start_slack_listener(
         return None
 
     logger.info("Slack tokens loaded from environment; starting Socket Mode")
-    app = App(token=settings.slack_bot_token)
+    # Default Bolt setting drops the bot's own posts, which hides self-@mentions
+    # used by the smoke test and any other bot-authored mention.
+    app = App(token=settings.slack_bot_token, ignoring_self_events_enabled=False)
+    bot_user_id = ""
+    try:
+        bot_user_id = str(app.client.auth_test().get("user_id") or "")
+    except Exception:
+        logger.exception("Could not resolve Slack bot user id")
 
     @app.event("message")
     def on_message(event: dict[str, Any], client: Any) -> None:
-        if event.get("channel_type") != "im":
+        if event.get("channel_type") == "im":
+            ingest_slack_event(
+                event, notif_type="dm", queue=queue, summarize=summarize, client=client
+            )
             return
-        ingest_slack_event(
-            event, notif_type="dm", queue=queue, summarize=summarize, client=client
-        )
+        # Bot self-@mention does not emit app_mention; catch it on the message event.
+        text = event.get("text") or ""
+        if (
+            event.get("bot_id")
+            and bot_user_id
+            and f"<@{bot_user_id}>" in text
+        ):
+            ingest_slack_event(
+                event, notif_type="mention", queue=queue, summarize=summarize, client=client
+            )
 
     @app.event("app_mention")
     def on_mention(event: dict[str, Any], client: Any) -> None:

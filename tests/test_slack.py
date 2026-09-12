@@ -99,6 +99,13 @@ class SlackListenerTests(unittest.TestCase):
         self.assertIsNone(ingest_slack_event(edited, notif_type="dm", queue=self.queue))
         self.assertEqual(self.queue.get_pending(), [])
 
+    def test_ingests_bot_authored_mention(self) -> None:
+        bot_mention = dict(MENTION_EVENT, bot_id="B01")
+        notif = ingest_slack_event(bot_mention, notif_type="mention", queue=self.queue)
+        assert notif is not None
+        self.assertEqual(notif.type, "mention")
+        self.assertEqual(len(self.queue.get_pending()), 1)
+
     def test_summarize_callback(self) -> None:
         ingest_slack_event(
             MENTION_EVENT,
