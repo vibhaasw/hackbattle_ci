@@ -9,6 +9,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from src.analytics import reset_stats
 from src.config import Settings
 from src.notification import Notification
 from src.queue import NotificationQueue
@@ -126,6 +127,26 @@ class QueueTests(unittest.TestCase):
         reloaded = NotificationQueue(self.settings.queue_file_path, self.settings)
         self.assertTrue(reloaded.notifications["github-pull_request-1"].deferred)
         self.assertTrue(reloaded.notifications["github-pull_request-2"].read)
+
+    def test_reset_stats_zeros_counters_only(self) -> None:
+        self.queue.add(_notif(1))
+        self.queue.add(_notif(2))
+        self.queue.stats["releases_today"] = 4
+        self.queue.stats["last_release_at"] = 123.0
+        self.queue.save()
+        ids_before = set(self.queue.notifications)
+        previous = reset_stats(self.queue)
+        self.assertEqual(previous["interruptions_caught_today"], 2)
+        self.assertEqual(previous["releases_today"], 4)
+        self.assertEqual(previous["focus_minutes_protected_today"], 2 * 17.5)
+        self.assertEqual(self.queue.stats["interruptions_caught_today"], 0)
+        self.assertEqual(self.queue.stats["releases_today"], 0)
+        self.assertEqual(self.queue.stats["focus_minutes_protected_today"], 0)
+        self.assertEqual(self.queue.stats["last_release_at"], 123.0)
+        self.assertEqual(set(self.queue.notifications), ids_before)
+        stored = json.loads(self.settings.queue_file_path.read_text(encoding="utf-8"))
+        self.assertEqual(stored["stats"]["interruptions_caught_today"], 0)
+        self.assertEqual(len(stored["notifications"]), 2)
 
     def test_repairs_corrupt_file(self) -> None:
         self.settings.queue_file_path.write_text("{not-json", encoding="utf-8")

@@ -17,7 +17,7 @@ if str(ROOT) not in sys.path:
 from src.config import Settings
 from src.github_listener import create_app
 from src.queue import NotificationQueue
-from src.analytics import stats_snapshot
+from src.analytics import reset_stats, stats_snapshot
 from src.release_logic import ReleaseLogic
 from src.slack_listener import run_socket_mode, start_slack_listener
 from src.summarizer import Summarizer
@@ -60,6 +60,10 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         metavar="N",
         help="Override check_interval_seconds for this watch (default: queue setting, 3600)",
+    )
+    sub.add_parser(
+        "reset-stats",
+        help="Zero today's demo counters in queue.json (notifications stay queued)",
     )
     return parser
 
@@ -215,6 +219,24 @@ def run_focus(settings: Settings, queue: NotificationQueue, state: str) -> None:
     ReleaseLogic(queue, settings).set_focus_mode(state == "on")
 
 
+def run_reset_stats(queue: NotificationQueue) -> None:
+    """Zero daily counters and print the previous values for a sanity check."""
+    previous = reset_stats(queue)
+    print(f"Reset daily stats in {queue.file_path}")
+    print(
+        f"  interruptions_caught_today: "
+        f"{previous['interruptions_caught_today']} → 0"
+    )
+    print(f"  releases_today: {previous['releases_today']} → 0")
+    print(
+        f"  focus_minutes_protected_today: "
+        f"{previous['focus_minutes_protected_today']} → 0"
+    )
+    print(
+        f"Notifications left untouched ({len(queue.notifications)} item(s))."
+    )
+
+
 def main() -> None:
     """Parse CLI args and start the requested command."""
     logging.basicConfig(
@@ -242,6 +264,8 @@ def main() -> None:
             queue,
             interval_seconds=getattr(args, "interval_seconds", None),
         )
+    elif args.command == "reset-stats":
+        run_reset_stats(queue)
 
 
 if __name__ == "__main__":

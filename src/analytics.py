@@ -53,3 +53,25 @@ def stats_snapshot(queue: NotificationQueue) -> dict[str, Any]:
     """Plain-dict stats for renderers."""
     refresh_focus_minutes(queue)
     return queue.get_stats_snapshot()
+
+
+_RESET_STAT_KEYS = (
+    "interruptions_caught_today",
+    "releases_today",
+    "focus_minutes_protected_today",
+)
+
+
+def reset_stats(queue: NotificationQueue) -> dict[str, Any]:
+    """Zero daily counters. Leaves notifications and other stats keys intact."""
+    previous = {key: queue.stats.get(key, 0) for key in _RESET_STAT_KEYS}
+    for key in _RESET_STAT_KEYS:
+        queue.stats[key] = 0
+    queue.save()
+    logger.info(
+        "Reset daily stats (was interruptions=%s releases=%s minutes=%s)",
+        previous["interruptions_caught_today"],
+        previous["releases_today"],
+        previous["focus_minutes_protected_today"],
+    )
+    return previous
