@@ -122,3 +122,13 @@ If live GitHub/Slack fail, use `replay` and continue from step 3.
 ```bash
 .venv/bin/python -m unittest discover -s tests
 ```
+
+## Development
+
+Interactive go-live checklist (dev/ops only — not part of the product):
+
+```bash
+.venv/bin/python scripts/golive.py
+```
+
+Automated checks only: `.venv/bin/python scripts/golive.py --auto`. See `GO_LIVE_CHECKLIST.md`.

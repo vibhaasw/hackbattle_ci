@@ -31,6 +31,7 @@ queue.json.bak
 queue.json.tmp
 stats.json
 tests/.tmp/
+logs/
 
 # Node (if dashboard tooling appears later)
 node_modules/
