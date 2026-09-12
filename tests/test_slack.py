@@ -2,15 +2,17 @@
 
 from __future__ import annotations
 
+import os
 import sys
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from src.config import Settings
 from src.queue import NotificationQueue
-from src.slack_listener import ingest_slack_event, normalize_slack_event
+from src.slack_listener import ingest_slack_event, normalize_slack_event, slack_token_errors
 
 DM_EVENT = {
     "type": "message",
@@ -105,6 +107,26 @@ class SlackListenerTests(unittest.TestCase):
             summarize=lambda n: f"SUM:{n.title[:20]}",
         )
         self.assertTrue(self.queue.get_pending()[0].summary.startswith("SUM:"))
+
+    def test_settings_reads_slack_tokens_from_env(self) -> None:
+        with patch.dict(
+            os.environ,
+            {
+                "SLACK_BOT_TOKEN": "xoxb-test-token-value",
+                "SLACK_APP_TOKEN": "xapp-test-token-value",
+            },
+        ):
+            settings = Settings.load()
+        self.assertEqual(settings.slack_bot_token, "xoxb-test-token-value")
+        self.assertEqual(settings.slack_app_token, "xapp-test-token-value")
+
+    def test_missing_and_placeholder_tokens_are_explicit(self) -> None:
+        missing = slack_token_errors("", "")
+        self.assertTrue(any("SLACK_BOT_TOKEN is missing" in e for e in missing))
+        self.assertTrue(any("SLACK_APP_TOKEN is missing" in e for e in missing))
+        placeholders = slack_token_errors("xoxb-replace-me", "xapp-replace-me")
+        self.assertTrue(any("placeholder" in e for e in placeholders))
+        self.assertEqual(slack_token_errors("xoxb-live-token", "xapp-live-token"), [])
 
 
 if __name__ == "__main__":
