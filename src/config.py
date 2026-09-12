@@ -60,6 +60,7 @@ class Settings:
     avg_context_switch_cost_minutes: float
     slack_bot_token: str = ""
     slack_app_token: str = ""
+    focus_mode: bool = False
 
     @classmethod
     def load(cls) -> Settings:
@@ -85,4 +86,5 @@ class Settings:
             ),
             slack_bot_token=_str("SLACK_BOT_TOKEN"),
             slack_app_token=_str("SLACK_APP_TOKEN"),
+            focus_mode=_bool("FOCUS_MODE", False),
         )

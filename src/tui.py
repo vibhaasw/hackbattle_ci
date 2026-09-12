@@ -38,3 +38,7 @@ class TUI:
             )
 
         self.console.print(table)
+
+    def show_held(self) -> None:
+        """Tell the developer the queue exists but the meeting gate is holding it."""
+        self.console.print(theme.HELD_MESSAGE)

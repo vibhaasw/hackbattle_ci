@@ -24,11 +24,18 @@ logger = logging.getLogger(__name__)
 
 
 def build_parser() -> argparse.ArgumentParser:
-    """CLI: `daemon` listens; `release` shows the TUI."""
+    """CLI: `daemon` listens; `release` shows the TUI; `focus` toggles the meeting gate."""
     parser = argparse.ArgumentParser(description="Context Interrupter")
     sub = parser.add_subparsers(dest="command", required=True)
     sub.add_parser("daemon", help="Run the GitHub webhook listener")
-    sub.add_parser("release", help="Manually release the queue into the TUI")
+    release = sub.add_parser("release", help="Manually release the queue into the TUI")
+    release.add_argument(
+        "--focus-mode",
+        choices=("on", "off"),
+        help="Override the meeting gate for this release only",
+    )
+    focus = sub.add_parser("focus", help="Persist the meeting / focus-mode gate")
+    focus.add_argument("state", choices=("on", "off"))
     return parser
 
 
@@ -68,10 +75,25 @@ def _run_slack(handler: object) -> None:
         )
 
 
-def run_release(settings: Settings, queue: NotificationQueue) -> None:
-    """Manual trigger: render whatever is currently pending."""
-    items = ReleaseLogic(queue, settings).manual_release()
-    TUI().show_queue(items)
+def run_release(
+    settings: Settings,
+    queue: NotificationQueue,
+    *,
+    focus_mode: str | None = None,
+) -> None:
+    """Manual trigger: render whatever is currently pending, unless the gate holds."""
+    override = None if focus_mode is None else focus_mode == "on"
+    logic = ReleaseLogic(queue, settings, focus_mode_override=override)
+    tui = TUI()
+    if logic.is_held():
+        tui.show_held()
+        return
+    tui.show_queue(logic.manual_release())
+
+
+def run_focus(settings: Settings, queue: NotificationQueue, state: str) -> None:
+    """Turn the persisted meeting / focus-mode gate on or off."""
+    ReleaseLogic(queue, settings).set_focus_mode(state == "on")
 
 
 def main() -> None:
@@ -86,7 +108,9 @@ def main() -> None:
     if args.command == "daemon":
         run_daemon(settings, queue)
     elif args.command == "release":
-        run_release(settings, queue)
+        run_release(settings, queue, focus_mode=getattr(args, "focus_mode", None))
+    elif args.command == "focus":
+        run_focus(settings, queue, args.state)
 
 
 if __name__ == "__main__":
