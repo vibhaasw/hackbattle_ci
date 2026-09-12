@@ -16,7 +16,7 @@ from src.config import Settings
 from src.github_listener import create_app
 from src.queue import NotificationQueue
 from src.release_logic import ReleaseLogic
-from src.slack_listener import start_slack_listener
+from src.slack_listener import run_socket_mode, start_slack_listener
 from src.summarizer import Summarizer
 from src.tui import TUI
 
@@ -60,9 +60,12 @@ def run_daemon(settings: Settings, queue: NotificationQueue) -> None:
 def _run_slack(handler: object) -> None:
     """Block on Socket Mode; log and exit the thread if Slack drops."""
     try:
-        handler.start()  # type: ignore[attr-defined]
+        run_socket_mode(handler)  # type: ignore[arg-type]
     except Exception:
-        logger.exception("Slack Socket Mode stopped; GitHub listener keeps running")
+        logger.exception(
+            "Slack Socket Mode failed to start. "
+            "GitHub listener keeps running. Check SLACK_BOT_TOKEN / SLACK_APP_TOKEN."
+        )
 
 
 def run_release(settings: Settings, queue: NotificationQueue) -> None:

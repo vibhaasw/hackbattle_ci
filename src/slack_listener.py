@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from threading import Event
 from typing import Any, Callable
 
 from slack_bolt import App
@@ -72,18 +73,35 @@ def ingest_slack_event(
         return None
 
 
+def slack_token_errors(bot_token: str, app_token: str) -> list[str]:
+    """Return problems with Slack tokens (empty if both look valid)."""
+    problems: list[str] = []
+    for name, token, prefix in (
+        ("SLACK_BOT_TOKEN", bot_token, "xoxb-"),
+        ("SLACK_APP_TOKEN", app_token, "xapp-"),
+    ):
+        if not token:
+            problems.append(f"{name} is missing")
+        elif "replace-me" in token:
+            problems.append(f"{name} is still a placeholder (replace-me)")
+        elif not token.startswith(prefix):
+            problems.append(f"{name} must start with {prefix}")
+    return problems
+
+
 def start_slack_listener(
     queue: NotificationQueue,
     settings: Settings,
     summarize: SummarizeFn | None = None,
 ) -> SocketModeHandler | None:
     """Build a Socket Mode handler, or None when Slack tokens are not configured."""
-    if not _token_ready(settings.slack_bot_token, "xoxb-") or not _token_ready(
-        settings.slack_app_token, "xapp-"
-    ):
-        logger.warning("Slack tokens missing; Socket Mode listener disabled")
+    problems = slack_token_errors(settings.slack_bot_token, settings.slack_app_token)
+    if problems:
+        for problem in problems:
+            logger.error("Slack listener disabled: %s", problem)
         return None
 
+    logger.info("Slack tokens loaded from environment; starting Socket Mode")
     app = App(token=settings.slack_bot_token)
 
     @app.event("message")
@@ -100,12 +118,21 @@ def start_slack_listener(
             event, notif_type="mention", queue=queue, summarize=summarize, client=client
         )
 
-    logger.info("Slack Socket Mode listener configured")
     return SocketModeHandler(app, settings.slack_app_token)
 
 
-def _token_ready(token: str, prefix: str) -> bool:
-    return bool(token) and token.startswith(prefix) and "replace-me" not in token
+def run_socket_mode(handler: SocketModeHandler) -> None:
+    """Connect, log a clear live/failed line, then block this thread."""
+    handler.connect()
+    if handler.client.is_connected():
+        logger.info("Slack Socket Mode listener configured")
+    else:
+        logger.error(
+            "Slack Socket Mode did not connect. "
+            "Check SLACK_APP_TOKEN, that Socket Mode is enabled, and the app is installed."
+        )
+        return
+    Event().wait()
 
 
 def _resolve_author(client: Any | None, user_id: str) -> str:
