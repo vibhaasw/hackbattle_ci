@@ -108,6 +108,19 @@ class ReleaseLogicTests(unittest.TestCase):
         self.assertTrue(open_gate.should_release(manual=True))
         self.assertEqual(len(open_gate.manual_release()), 1)
 
+    def test_release_increments_analytics(self) -> None:
+        self._seed()
+        self.assertEqual(self.queue.stats["interruptions_caught_today"], 1)
+        self.logic.manual_release()
+        self.assertEqual(self.queue.stats["releases_today"], 1)
+        self.assertEqual(self.queue.stats["focus_minutes_protected_today"], 17.5)
+
+    def test_held_release_does_not_increment_releases(self) -> None:
+        self._seed()
+        held = ReleaseLogic(self.queue, self.settings, focus_mode_override=True)
+        held.manual_release()
+        self.assertEqual(self.queue.stats["releases_today"], 0)
+
     def test_calendar_gate_disabled_ignores_focus_mode(self) -> None:
         self._seed()
         ungated = ReleaseLogic(
