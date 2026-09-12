@@ -1,0 +1,39 @@
+# Secrets and credentials
+.env
+*.pem
+*.key
+token.json
+credentials.json
+client_secret*.json
+*-credentials.json
+*-token.json
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+env/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Runtime / local state
+*.db
+*.sqlite
+*.sqlite3
+queue.json
+stats.json
+
+# Node (if dashboard tooling appears later)
+node_modules/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
