@@ -37,6 +37,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     focus = sub.add_parser("focus", help="Persist the meeting / focus-mode gate")
     focus.add_argument("state", choices=("on", "off"))
+    sub.add_parser("replay", help="Load canned demo/test_notifications.json into the queue")
     return parser
 
 
@@ -93,6 +94,24 @@ def run_release(
     tui.show_queue(logic.manual_release(), stats_snapshot(queue), warning=logic.gate_warning)
 
 
+def run_replay(queue: NotificationQueue) -> None:
+    """Load canned GitHub + Slack notifications for a live-source outage."""
+    import json
+
+    from src.notification import Notification
+
+    path = ROOT / "demo" / "test_notifications.json"
+    raw = json.loads(path.read_text(encoding="utf-8"))
+    items = raw.get("notifications") or []
+    loaded = 0
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        queue.add(Notification.from_dict(item))
+        loaded += 1
+    logger.info("Replayed %s canned notification(s) from %s", loaded, path)
+
+
 def run_focus(settings: Settings, queue: NotificationQueue, state: str) -> None:
     """Turn the persisted meeting / focus-mode gate on or off."""
     ReleaseLogic(queue, settings).set_focus_mode(state == "on")
@@ -113,6 +132,8 @@ def main() -> None:
         run_release(settings, queue, focus_mode=getattr(args, "focus_mode", None))
     elif args.command == "focus":
         run_focus(settings, queue, args.state)
+    elif args.command == "replay":
+        run_replay(queue)
 
 
 if __name__ == "__main__":
