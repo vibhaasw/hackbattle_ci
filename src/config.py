@@ -58,6 +58,8 @@ class Settings:
     auto_clear_after_days: int
     calendar_gate_enabled: bool
     avg_context_switch_cost_minutes: float
+    slack_bot_token: str = ""
+    slack_app_token: str = ""
 
     @classmethod
     def load(cls) -> Settings:
@@ -81,4 +83,6 @@ class Settings:
             avg_context_switch_cost_minutes=float(
                 os.getenv("AVG_CONTEXT_SWITCH_COST_MINUTES", "17.5")
             ),
+            slack_bot_token=_str("SLACK_BOT_TOKEN"),
+            slack_app_token=_str("SLACK_APP_TOKEN"),
         )

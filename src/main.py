@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import logging
 import sys
+import threading
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -15,6 +16,7 @@ from src.config import Settings
 from src.github_listener import create_app
 from src.queue import NotificationQueue
 from src.release_logic import ReleaseLogic
+from src.slack_listener import start_slack_listener
 from src.summarizer import Summarizer
 from src.tui import TUI
 
@@ -31,8 +33,17 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def run_daemon(settings: Settings, queue: NotificationQueue) -> None:
-    """Serve POST /github/webhook and persist summarized notifications."""
+    """Serve GitHub webhooks and, if configured, Slack Socket Mode."""
     summarizer = Summarizer(settings)
+    handler = start_slack_listener(queue, settings, summarizer.summarize)
+    if handler is not None:
+        thread = threading.Thread(
+            target=_run_slack,
+            args=(handler,),
+            name="slack-socket-mode",
+            daemon=True,
+        )
+        thread.start()
     app = create_app(queue, settings.github_webhook_secret, summarizer.summarize)
     logger.info(
         "Listening for GitHub webhooks on http://%s:%s/github/webhook",
@@ -44,6 +55,14 @@ def run_daemon(settings: Settings, queue: NotificationQueue) -> None:
         port=settings.github_webhook_port,
         use_reloader=False,
     )
+
+
+def _run_slack(handler: object) -> None:
+    """Block on Socket Mode; log and exit the thread if Slack drops."""
+    try:
+        handler.start()  # type: ignore[attr-defined]
+    except Exception:
+        logger.exception("Slack Socket Mode stopped; GitHub listener keeps running")
 
 
 def run_release(settings: Settings, queue: NotificationQueue) -> None:
