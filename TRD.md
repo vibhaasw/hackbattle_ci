@@ -69,7 +69,7 @@ This TRD specifies the technical requirements for:
 - Flask endpoint `/github/webhook` on port `9001`.
 - Validates GitHub webhook signature.
 - Handles `pull_request`, `issues`, `issue_comment` events.
-- Fallback: periodic API polling if webhook delivery fails (per original failure-mode table).
+- Fallback: `python -m src.main replay` against canned `demo/test_notifications.json` if webhook delivery fails (see §6). Live GitHub API polling was never built.
 
 ### 3.2 Slack Listener (new)
 - **Approach:** Slack Socket Mode (preferred — avoids public URL/ngrok dependency for demo reliability) using `slack-bolt` (Python) or equivalent.
