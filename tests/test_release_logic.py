@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import shutil
+import subprocess
 import sys
 import unittest
 from pathlib import Path
@@ -26,7 +28,7 @@ def _settings(tmp: Path, **overrides: object) -> Settings:
         "ollama_timeout_seconds": base.ollama_timeout_seconds,
         "queue_file_path": tmp / "queue.json",
         "check_interval_seconds": base.check_interval_seconds,
-        "git_commit_trigger": base.git_commit_trigger,
+        "git_commit_trigger": True,
         "build_success_trigger": base.build_success_trigger,
         "manual_trigger_enabled": True,
         "max_queue_size": base.max_queue_size,
@@ -47,10 +49,8 @@ class ReleaseLogicTests(unittest.TestCase):
         self.logic = ReleaseLogic(self.queue, self.settings)
 
     def tearDown(self) -> None:
-        for path in self.dir.glob("*"):
-            path.unlink()
         if self.dir.exists():
-            self.dir.rmdir()
+            shutil.rmtree(self.dir)
 
     def _seed(self) -> None:
         self.queue.add(
@@ -76,10 +76,41 @@ class ReleaseLogicTests(unittest.TestCase):
         self.assertFalse(self.logic.should_release(manual=True))
         self.assertEqual(self.logic.manual_release(), [])
 
-    def test_commit_trigger_stubbed(self) -> None:
+    def test_commit_trigger_detects_new_sha(self) -> None:
+        repo = self.dir / "repo"
+        self._init_git_repo(repo)
         self._seed()
-        self.assertFalse(self.logic._git_commit_detected())
-        self.assertFalse(self.logic.should_release(manual=False))
+        logic = ReleaseLogic(self.queue, self.settings, git_root=repo)
+        self.assertFalse(logic._git_commit_detected())
+        self.assertFalse(logic.should_release(manual=False))
+        self._git_commit(repo, "second")
+        self.assertTrue(logic.should_release(manual=False))
+        self.assertFalse(logic.should_release(manual=False))
+
+    def test_auto_release_on_new_commit(self) -> None:
+        repo = self.dir / "repo"
+        self._init_git_repo(repo)
+        self._seed()
+        logic = ReleaseLogic(self.queue, self.settings, git_root=repo)
+        self.assertEqual(logic.auto_release(), [])
+        self._git_commit(repo, "release-me")
+        snap = logic.auto_release()
+        self.assertEqual(len(snap), 1)
+        self.assertEqual(snap[0]["id"], "github-issue-1")
+        self.assertEqual(self.queue.stats["releases_today"], 1)
+
+    def test_commit_trigger_respects_focus_mode(self) -> None:
+        repo = self.dir / "repo"
+        self._init_git_repo(repo)
+        self._seed()
+        logic = ReleaseLogic(
+            self.queue, self.settings, focus_mode_override=True, git_root=repo
+        )
+        logic._git_commit_detected()
+        self._git_commit(repo, "during-meeting")
+        self.assertTrue(logic._git_commit_detected())
+        self.assertTrue(logic.is_held())
+        self.assertEqual(logic.auto_release(), [])
 
     def test_build_trigger_stubbed(self) -> None:
         self._seed()
@@ -150,6 +181,33 @@ class ReleaseLogicTests(unittest.TestCase):
         self.assertTrue(again.is_held())
         self.logic.set_focus_mode(False)
         self.assertFalse(ReleaseLogic(self.queue, self.settings).is_held())
+
+    def _init_git_repo(self, repo: Path) -> None:
+        repo.mkdir()
+        subprocess.run(["git", "init"], cwd=repo, check=True, capture_output=True)
+        subprocess.run(
+            ["git", "config", "user.email", "ci@test.local"],
+            cwd=repo,
+            check=True,
+            capture_output=True,
+        )
+        subprocess.run(
+            ["git", "config", "user.name", "CI Test"],
+            cwd=repo,
+            check=True,
+            capture_output=True,
+        )
+        self._git_commit(repo, "first")
+
+    def _git_commit(self, repo: Path, name: str) -> None:
+        (repo / "note.txt").write_text(name + "\n", encoding="utf-8")
+        subprocess.run(["git", "add", "note.txt"], cwd=repo, check=True, capture_output=True)
+        subprocess.run(
+            ["git", "commit", "-m", name],
+            cwd=repo,
+            check=True,
+            capture_output=True,
+        )
 
 
 if __name__ == "__main__":

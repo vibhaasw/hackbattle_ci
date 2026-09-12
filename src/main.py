@@ -6,6 +6,7 @@ import argparse
 import logging
 import sys
 import threading
+import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -38,6 +39,7 @@ def build_parser() -> argparse.ArgumentParser:
     focus = sub.add_parser("focus", help="Persist the meeting / focus-mode gate")
     focus.add_argument("state", choices=("on", "off"))
     sub.add_parser("replay", help="Load canned demo/test_notifications.json into the queue")
+    sub.add_parser("watch", help="Watch .git/HEAD and release the queue after a commit")
     return parser
 
 
@@ -112,6 +114,21 @@ def run_replay(queue: NotificationQueue) -> None:
     logger.info("Replayed %s canned notification(s) from %s", loaded, path)
 
 
+def run_watch(settings: Settings, queue: NotificationQueue) -> None:
+    """Poll .git/HEAD and open the TUI when a new commit is detected."""
+    logic = ReleaseLogic(queue, settings, git_root=ROOT)
+    logic._git_commit_detected()
+    logger.info("Watching %s for commits (Ctrl+C to stop)", ROOT / ".git" / "HEAD")
+    try:
+        while True:
+            items = logic.auto_release()
+            if items:
+                TUI().show_queue(items, stats_snapshot(queue), warning=logic.gate_warning)
+            time.sleep(1)
+    except KeyboardInterrupt:
+        logger.info("Stopped watching for commits")
+
+
 def run_focus(settings: Settings, queue: NotificationQueue, state: str) -> None:
     """Turn the persisted meeting / focus-mode gate on or off."""
     ReleaseLogic(queue, settings).set_focus_mode(state == "on")
@@ -134,6 +151,8 @@ def main() -> None:
         run_focus(settings, queue, args.state)
     elif args.command == "replay":
         run_replay(queue)
+    elif args.command == "watch":
+        run_watch(settings, queue)
 
 
 if __name__ == "__main__":
