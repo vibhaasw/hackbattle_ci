@@ -35,6 +35,7 @@ class TUI:
                 item.get("type") or "",
                 item.get("author") or "",
                 summary,
+                style=theme.row_style(item.get("urgency")),
             )
 
         self.console.print(table)
