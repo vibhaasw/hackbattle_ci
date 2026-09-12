@@ -89,6 +89,13 @@ class QueueTests(unittest.TestCase):
         self.assertEqual(len(reloaded.notifications), 1)
         self.assertEqual(reloaded.get_pending()[0].summary, "[PR] Sarah: OAuth2")
 
+    def test_capture_increments_interruptions(self) -> None:
+        self.queue.add(_notif(1))
+        self.queue.add(_notif(1, title="updated"))
+        self.queue.add(_notif(2))
+        self.assertEqual(self.queue.stats["interruptions_caught_today"], 2)
+        self.assertEqual(self.queue.stats["focus_minutes_protected_today"], 2 * 17.5)
+
     def test_sorts_by_urgency_then_timestamp(self) -> None:
         self.queue.add(_notif(1, title="old normal", urgency="normal", timestamp=100.0))
         self.queue.add(_notif(2, title="new low", urgency="low", timestamp=300.0))

@@ -40,6 +40,7 @@ class NotificationQueue:
     def add(self, notification: Notification) -> Notification:
         """Insert or update a notification, then persist."""
         existing = self.notifications.get(notification.id)
+        is_new = existing is None
         if existing is not None:
             existing.update(notification)
             stored = existing
@@ -47,6 +48,10 @@ class NotificationQueue:
             self.notifications[notification.id] = notification
             stored = notification
         self._enforce_max_size()
+        if is_new:
+            from src.analytics import on_capture
+
+            on_capture(self, persist=False)
         self.save()
         return stored
 

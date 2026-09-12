@@ -54,6 +54,9 @@ class ReleaseLogic:
             logger.info("Manual release requested but nothing to show")
             return []
         snapshot = self.queue.get_queue_snapshot()
+        from src.analytics import on_release
+
+        on_release(self.queue)
         logger.info("Manual release of %s notification(s)", len(snapshot))
         return snapshot
 
