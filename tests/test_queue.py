@@ -89,6 +89,19 @@ class QueueTests(unittest.TestCase):
         self.assertEqual(len(reloaded.notifications), 1)
         self.assertEqual(reloaded.get_pending()[0].summary, "[PR] Sarah: OAuth2")
 
+    def test_empty_queue_on_startup(self) -> None:
+        missing = self.dir / "brand-new.json"
+        fresh = NotificationQueue(missing, self.settings)
+        self.assertEqual(fresh.get_pending(), [])
+        self.assertEqual(fresh.get_queue_snapshot(), [])
+        self.assertEqual(fresh.stats["interruptions_caught_today"], 0)
+
+    def test_long_title_persists(self) -> None:
+        title = "x" * 5000
+        self.queue.add(_notif(7, title=title))
+        reloaded = NotificationQueue(self.settings.queue_file_path, self.settings)
+        self.assertEqual(len(reloaded.get_pending()[0].title), 5000)
+
     def test_capture_increments_interruptions(self) -> None:
         self.queue.add(_notif(1))
         self.queue.add(_notif(1, title="updated"))
