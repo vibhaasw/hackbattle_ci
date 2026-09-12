@@ -87,7 +87,7 @@ class NotificationQueue:
             backup = self.file_path.with_suffix(".json.bak")
             try:
                 shutil.copy2(self.file_path, backup)
-                logger.exception("Corrupt queue at %s; backed up to %s", self.file_path, backup)
+                logger.error("Corrupt queue at %s; backed up to %s and repaired", self.file_path, backup)
             except OSError:
                 logger.exception("Corrupt queue at %s and backup failed", self.file_path)
             self.notifications = {}
