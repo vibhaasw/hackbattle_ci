@@ -11,6 +11,7 @@ from rich.console import Console
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from src import theme
 from src.config import Settings
 from src.notification import Notification
 from src.queue import NotificationQueue
@@ -89,6 +90,19 @@ class TuiSessionTests(unittest.TestCase):
         self.assertIn("Unknown command", output)
         self.assertIn("No item 9", output)
         self.assertEqual(len(self.queue.get_pending()), 2)
+
+    def test_empty_enter_does_not_redraw_table(self) -> None:
+        commands = iter(["", "   ", "q"])
+        self.tui.run_session(
+            self.queue,
+            stats_fn=self.queue.get_stats_snapshot,
+            input_fn=lambda _prompt: next(commands),
+            open_url=self.opened.append,
+        )
+        output = self.buf.getvalue()
+        self.assertEqual(output.count("CONTEXT QUEUE"), 1)
+        self.assertEqual(output.count(theme.FOCUS_PANEL_TITLE), 1)
+        self.assertGreaterEqual(output.count(theme.TUI_PROMPT), 3)
 
 
 if __name__ == "__main__":

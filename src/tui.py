@@ -70,17 +70,26 @@ class TUI:
     ) -> None:
         """Render the table, then loop on stdin until the user quits."""
         opener = webbrowser.open if open_url is None else open_url
+        redraw = True
+        items = queue.get_queue_snapshot()
         while True:
-            items = queue.get_queue_snapshot()
-            stats = stats_fn() if stats_fn else None
-            self.show_queue(items, stats, warning=warning)
+            if redraw:
+                items = queue.get_queue_snapshot()
+                stats = stats_fn() if stats_fn else None
+                self.show_queue(items, stats, warning=warning)
+                redraw = False
             self.console.print(theme.TUI_PROMPT)
             try:
                 raw = input_fn(theme.TUI_INPUT)
             except EOFError:
                 return
-            if self._apply_command(raw, items, queue, opener) == "quit":
+            if not raw.strip():
+                continue
+            action = self._apply_command(raw, items, queue, opener)
+            if action == "quit":
                 return
+            if action == "redraw":
+                redraw = True
 
     def _apply_command(
         self,
@@ -89,10 +98,8 @@ class TUI:
         queue: NotificationQueue,
         opener: Callable[[str], object],
     ) -> str:
-        """Apply one command. Returns `quit` or `continue`."""
+        """Apply one command. Returns `quit`, `redraw`, or `continue`."""
         line = raw.strip()
-        if not line:
-            return "continue"
         parts = line.split()
         cmd = parts[0].lower()
         if cmd in {"q", "quit", "exit"}:
@@ -111,16 +118,17 @@ class TUI:
         if cmd == "d":
             queue.defer(str(item["id"]))
             self.console.print(theme.TUI_DEFERRED.format(n=index))
-        elif cmd == "x":
+            return "redraw"
+        if cmd == "x":
             queue.dismiss(str(item["id"]))
             self.console.print(theme.TUI_DISMISSED.format(n=index))
+            return "redraw"
+        url = str(item.get("url") or "")
+        if not url:
+            self.console.print(theme.TUI_NO_URL.format(n=index))
         else:
-            url = str(item.get("url") or "")
-            if not url:
-                self.console.print(theme.TUI_NO_URL.format(n=index))
-            else:
-                opener(url)
-                self.console.print(theme.TUI_OPENED.format(url=url))
+            opener(url)
+            self.console.print(theme.TUI_OPENED.format(url=url))
         return "continue"
 
     def _print_header(self, stats: dict[str, Any] | None) -> None:
