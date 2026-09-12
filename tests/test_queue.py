@@ -117,6 +117,16 @@ class QueueTests(unittest.TestCase):
         titles = [n.title for n in self.queue.get_pending()]
         self.assertEqual(titles, ["new urgent", "old urgent", "old normal", "new low"])
 
+    def test_defer_and_dismiss_leave_pending(self) -> None:
+        self.queue.add(_notif(1, title="defer me"))
+        self.queue.add(_notif(2, title="dismiss me"))
+        self.assertTrue(self.queue.defer("github-pull_request-1"))
+        self.assertTrue(self.queue.dismiss("github-pull_request-2"))
+        self.assertEqual(self.queue.get_pending(), [])
+        reloaded = NotificationQueue(self.settings.queue_file_path, self.settings)
+        self.assertTrue(reloaded.notifications["github-pull_request-1"].deferred)
+        self.assertTrue(reloaded.notifications["github-pull_request-2"].read)
+
     def test_repairs_corrupt_file(self) -> None:
         self.settings.queue_file_path.write_text("{not-json", encoding="utf-8")
         repaired = NotificationQueue(self.settings.queue_file_path, self.settings)

@@ -22,6 +22,15 @@ URGENCY_STYLE = {
 FOCUS_PANEL_TITLE = "FOCUS"
 FOCUS_STAT_TEMPLATE = "🛡 {minutes:g} min protected today"
 
+TUI_PROMPT = "d <n> defer  |  x <n> dismiss  |  o <n> open source  |  q quit"
+TUI_INPUT = "> "
+TUI_UNKNOWN = "Unknown command. Use d <n>, x <n>, o <n>, or q."
+TUI_BAD_INDEX = "No item {n} in the current queue."
+TUI_NO_URL = "Item {n} has no source URL."
+TUI_DEFERRED = "Deferred item {n}."
+TUI_DISMISSED = "Dismissed item {n}."
+TUI_OPENED = "Opened {url}"
+
 
 def row_style(urgency: str | None) -> str:
     """Rich style name for a notification row, keyed by urgency."""

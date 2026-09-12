@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import webbrowser
+from collections.abc import Callable
 from typing import Any
 
 from rich.console import Console
@@ -9,10 +11,11 @@ from rich.panel import Panel
 from rich.table import Table
 
 from src import theme
+from src.queue import NotificationQueue
 
 
 class TUI:
-    """Pure renderer — reads snapshot dicts, never mutates queue state."""
+    """Renders queue snapshots and applies stdin commands through the queue API."""
 
     def __init__(self, console: Console | None = None) -> None:
         self.console = console or Console()
@@ -55,6 +58,70 @@ class TUI:
         if warning:
             self.console.print(warning)
         self.console.print(theme.HELD_MESSAGE)
+
+    def run_session(
+        self,
+        queue: NotificationQueue,
+        stats_fn: Callable[[], dict[str, Any]] | None = None,
+        warning: str | None = None,
+        *,
+        input_fn: Callable[[str], str] = input,
+        open_url: Callable[[str], object] | None = None,
+    ) -> None:
+        """Render the table, then loop on stdin until the user quits."""
+        opener = webbrowser.open if open_url is None else open_url
+        while True:
+            items = queue.get_queue_snapshot()
+            stats = stats_fn() if stats_fn else None
+            self.show_queue(items, stats, warning=warning)
+            self.console.print(theme.TUI_PROMPT)
+            try:
+                raw = input_fn(theme.TUI_INPUT)
+            except EOFError:
+                return
+            if self._apply_command(raw, items, queue, opener) == "quit":
+                return
+
+    def _apply_command(
+        self,
+        raw: str,
+        items: list[dict[str, Any]],
+        queue: NotificationQueue,
+        opener: Callable[[str], object],
+    ) -> str:
+        """Apply one command. Returns `quit` or `continue`."""
+        line = raw.strip()
+        if not line:
+            return "continue"
+        parts = line.split()
+        cmd = parts[0].lower()
+        if cmd in {"q", "quit", "exit"}:
+            return "quit"
+        if cmd not in {"d", "x", "o"}:
+            self.console.print(theme.TUI_UNKNOWN)
+            return "continue"
+        if len(parts) != 2 or not parts[1].isdigit():
+            self.console.print(theme.TUI_UNKNOWN)
+            return "continue"
+        index = int(parts[1])
+        if index < 1 or index > len(items):
+            self.console.print(theme.TUI_BAD_INDEX.format(n=index))
+            return "continue"
+        item = items[index - 1]
+        if cmd == "d":
+            queue.defer(str(item["id"]))
+            self.console.print(theme.TUI_DEFERRED.format(n=index))
+        elif cmd == "x":
+            queue.dismiss(str(item["id"]))
+            self.console.print(theme.TUI_DISMISSED.format(n=index))
+        else:
+            url = str(item.get("url") or "")
+            if not url:
+                self.console.print(theme.TUI_NO_URL.format(n=index))
+            else:
+                opener(url)
+                self.console.print(theme.TUI_OPENED.format(url=url))
+        return "continue"
 
     def _print_header(self, stats: dict[str, Any] | None) -> None:
         minutes = 0.0

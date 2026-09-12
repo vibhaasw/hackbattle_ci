@@ -76,6 +76,26 @@ class NotificationQueue:
         """Plain-dict view of persisted stats for renderers."""
         return dict(self.stats)
 
+    def defer(self, notification_id: str) -> bool:
+        """Mark a notification deferred so it leaves the pending list."""
+        notif = self.notifications.get(notification_id)
+        if notif is None:
+            return False
+        notif.deferred = True
+        self.save()
+        logger.info("Deferred %s", notification_id)
+        return True
+
+    def dismiss(self, notification_id: str) -> bool:
+        """Mark a notification read so it leaves the pending list."""
+        notif = self.notifications.get(notification_id)
+        if notif is None:
+            return False
+        notif.read = True
+        self.save()
+        logger.info("Dismissed %s", notification_id)
+        return True
+
     def load(self) -> None:
         """Load queue.json, repairing from backup if the file is corrupt."""
         if not self.file_path.exists():

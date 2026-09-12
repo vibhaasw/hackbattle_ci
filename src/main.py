@@ -93,7 +93,11 @@ def run_release(
     if logic.is_held():
         tui.show_held(stats, warning=logic.gate_warning)
         return
-    tui.show_queue(logic.manual_release(), stats_snapshot(queue), warning=logic.gate_warning)
+    items = logic.manual_release()
+    if not items:
+        tui.show_queue([], stats_snapshot(queue), warning=logic.gate_warning)
+        return
+    tui.run_session(queue, lambda: stats_snapshot(queue), warning=logic.gate_warning)
 
 
 def run_replay(queue: NotificationQueue) -> None:
@@ -123,7 +127,11 @@ def run_watch(settings: Settings, queue: NotificationQueue) -> None:
         while True:
             items = logic.auto_release()
             if items:
-                TUI().show_queue(items, stats_snapshot(queue), warning=logic.gate_warning)
+                TUI().run_session(
+                    queue,
+                    lambda: stats_snapshot(queue),
+                    warning=logic.gate_warning,
+                )
             time.sleep(1)
     except KeyboardInterrupt:
         logger.info("Stopped watching for commits")
