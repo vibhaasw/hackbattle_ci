@@ -88,9 +88,9 @@ def run_release(
     stats = stats_snapshot(queue)
     tui = TUI()
     if logic.is_held():
-        tui.show_held(stats)
+        tui.show_held(stats, warning=logic.gate_warning)
         return
-    tui.show_queue(logic.manual_release(), stats_snapshot(queue))
+    tui.show_queue(logic.manual_release(), stats_snapshot(queue), warning=logic.gate_warning)
 
 
 def run_focus(settings: Settings, queue: NotificationQueue, state: str) -> None:

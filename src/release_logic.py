@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 from typing import Any
 
@@ -24,6 +25,7 @@ class ReleaseLogic:
         self.queue = queue
         self.settings = settings
         self.focus_mode_override = focus_mode_override
+        self.gate_warning: str | None = None
 
     def should_release(self, *, manual: bool = False) -> bool:
         """True when there is something to show, the gate is clear, and a trigger fires."""
@@ -67,13 +69,30 @@ class ReleaseLogic:
         logger.info("Focus mode %s", "on" if enabled else "off")
 
     def _calendar_gate_clear(self) -> bool:
-        """False while the developer is in a meeting / focus mode (TRD §3.5)."""
+        """False while focus mode is on; calendar auth failures fail open (TRD §6)."""
         if not self.settings.calendar_gate_enabled:
             return True
         if self._focus_mode_on():
             logger.info("Release held: focus mode is on")
             return False
+        if self._calendar_credentials_broken():
+            self.gate_warning = "Calendar credentials unreadable — failing open (not in a meeting)."
+            logger.warning(self.gate_warning)
+            return True
         return True
+
+    def _calendar_credentials_broken(self) -> bool:
+        """True when a credentials file was provided but cannot be read."""
+        path = self.settings.google_calendar_credentials_file
+        if path is None:
+            return False
+        if not path.exists():
+            return True
+        try:
+            json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError, UnicodeDecodeError):
+            return True
+        return False
 
     def _focus_mode_on(self) -> bool:
         if self.focus_mode_override is not None:
