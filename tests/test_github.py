@@ -122,6 +122,36 @@ class GitHubListenerTests(unittest.TestCase):
         resp = self._post("ping", {"zen": "Keep it logically awesome."})
         self.assertEqual(resp.status_code, 200)
 
+    def test_malformed_json_does_not_crash(self) -> None:
+        body = b"not-json"
+        digest = hmac.new(b"test-secret", body, hashlib.sha256).hexdigest()
+        resp = self.client.post(
+            "/github/webhook",
+            data=body,
+            headers={
+                "X-GitHub-Event": "issues",
+                "Content-Type": "application/json",
+                "X-Hub-Signature-256": f"sha256={digest}",
+            },
+        )
+        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(self.queue.get_pending(), [])
+
+    def test_missing_author_becomes_unknown(self) -> None:
+        payload = {
+            "action": "opened",
+            "issue": {"id": 1, "title": "No author", "html_url": "https://x", "user": None},
+        }
+        resp = self._post("issues", payload)
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(self.queue.get_pending()[0].author, "unknown")
+
+    def test_incomplete_payload_ignored(self) -> None:
+        resp = self._post("pull_request", {"action": "opened"})
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.get_json()["status"], "ignored")
+        self.assertEqual(self.queue.get_pending(), [])
+
 
 if __name__ == "__main__":
     unittest.main()
