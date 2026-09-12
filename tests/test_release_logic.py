@@ -94,6 +94,37 @@ class ReleaseLogicTests(unittest.TestCase):
         disabled = ReleaseLogic(self.queue, _settings(self.dir, manual_trigger_enabled=False))
         self.assertFalse(disabled.should_release(manual=True))
 
+    def test_focus_mode_holds_release(self) -> None:
+        self._seed()
+        held = ReleaseLogic(self.queue, self.settings, focus_mode_override=True)
+        self.assertTrue(held.is_held())
+        self.assertFalse(held.should_release(manual=True))
+        self.assertEqual(held.manual_release(), [])
+
+    def test_focus_mode_off_releases(self) -> None:
+        self._seed()
+        open_gate = ReleaseLogic(self.queue, self.settings, focus_mode_override=False)
+        self.assertFalse(open_gate.is_held())
+        self.assertTrue(open_gate.should_release(manual=True))
+        self.assertEqual(len(open_gate.manual_release()), 1)
+
+    def test_calendar_gate_disabled_ignores_focus_mode(self) -> None:
+        self._seed()
+        ungated = ReleaseLogic(
+            self.queue,
+            _settings(self.dir, calendar_gate_enabled=False),
+            focus_mode_override=True,
+        )
+        self.assertTrue(ungated.should_release(manual=True))
+
+    def test_persisted_focus_mode(self) -> None:
+        self._seed()
+        self.logic.set_focus_mode(True)
+        again = ReleaseLogic(self.queue, self.settings)
+        self.assertTrue(again.is_held())
+        self.logic.set_focus_mode(False)
+        self.assertFalse(ReleaseLogic(self.queue, self.settings).is_held())
+
 
 if __name__ == "__main__":
     unittest.main()
